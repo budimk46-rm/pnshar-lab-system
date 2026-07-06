@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pnshar-lab-v1';
+const CACHE_NAME = 'pnshar-lab-v2';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
