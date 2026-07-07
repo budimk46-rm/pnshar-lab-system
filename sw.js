@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pnshar-lab-v2';
+const CACHE_NAME = 'pnshar-lab-v3';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -25,7 +25,6 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Hanya cache request GET untuk aset sendiri (bukan API call ke Gemini/Sheets)
   const url = new URL(event.request.url);
   const isOwnAsset = url.origin === self.location.origin;
 
@@ -34,6 +33,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const isHTML = event.request.mode === 'navigate' ||
+                 event.request.destination === 'document' ||
+                 url.pathname.endsWith('.html') ||
+                 url.pathname.endsWith('/');
+
+  if (isHTML) {
+    // NETWORK-FIRST untuk HTML: selalu coba ambil versi terbaru dulu.
+    // Cache hanya dipakai kalau benar-benar tidak ada koneksi internet.
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, networkResponse.clone());
+          });
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // CACHE-FIRST untuk aset statis (icon, manifest) supaya loading cepat,
+  // tetap update cache di background untuk kunjungan berikutnya.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const fetchPromise = fetch(event.request)
