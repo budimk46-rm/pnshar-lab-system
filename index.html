@@ -161,9 +161,12 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
           </select>
         </div>
       </div>
+      <div class="field-row">
+        <div><label>Tanggal</label><input type="text" id="field-date" readonly></div>
+      </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="photo-card">
       <h2><span class="num">2</span>Foto layar monitor alat</h2>
       <div class="upload-zone" id="upload-zone">
         <div class="icon">&#128247;</div>
@@ -178,6 +181,26 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       <div class="err-box" id="err-box"></div>
     </div>
 
+    <div class="card" id="manual-entry-card" style="display:none">
+      <h2><span class="num">2</span>Timbang &amp; hitung Cobb</h2>
+      <div class="field-row">
+        <div>
+          <label>Berat Before (gram)</label>
+          <input type="number" id="manual-before" inputmode="decimal" step="0.01" placeholder="0.00" style="font-size:22px;font-weight:700;text-align:center;padding:14px 10px;">
+        </div>
+        <div>
+          <label>Berat After (gram)</label>
+          <input type="number" id="manual-after" inputmode="decimal" step="0.01" placeholder="0.00" style="font-size:22px;font-weight:700;text-align:center;padding:14px 10px;">
+        </div>
+      </div>
+      <div style="margin-top:16px;background:var(--moss-p);border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-d);opacity:.75;">Nilai Cobb60</div>
+        <div id="manual-result-display" style="font-size:32px;font-weight:700;color:var(--ink-f);margin-top:4px;">-</div>
+        <div style="font-size:11px;color:var(--moss-d);opacity:.7;">g/m² &nbsp;=&nbsp; (After − Before) × 100</div>
+      </div>
+      <button class="btn-primary" id="save-manual-btn" style="margin-top:14px">Simpan</button>
+    </div>
+
     <div class="card" id="result-card" style="display:none">
       <h2><span class="num">3</span>Periksa &amp; simpan</h2>
       <div id="result-grid" class="result-grid"></div>
@@ -185,9 +208,6 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       <div class="conf-note" id="conf-note">Nilai berwarna kuning kurang yakin. Periksa dan koreksi sebelum menyimpan.</div>
       <span class="toggle-raw" id="toggle-raw">Lihat teks mentah OCR</span>
       <div class="ocr-raw" id="ocr-raw"></div>
-      <div class="field-row" style="margin-top:14px;">
-        <div><label>Tanggal</label><input type="text" id="field-date" readonly></div>
-      </div>
       <button class="btn-primary" id="save-btn" style="margin-top:14px">Simpan</button>
     </div>
   </section>
@@ -251,6 +271,13 @@ const INSTRUMENTS = {
     ],
     available:true, sheet:'records_tear'
   },
+  COBB:{
+    label:'Cobb Tester',
+    manualEntry:true,
+    primaryFields:[{key:'Cobb',unit:'g/m\u00b2'}],
+    refFields:[{key:'before',unit:'gram'},{key:'after',unit:'gram'}],
+    available:true, sheet:'records_cobb'
+  },
   BURSTING:{label:'Bursting Tester',primaryFields:[],refFields:[],available:false},
   IB:{label:'Internal Bond Tester',primaryFields:[],refFields:[],available:false}
 };
@@ -304,6 +331,18 @@ function initInstrument(){
     o.value=k;o.textContent=v.label+(v.available?'':' (segera hadir)');o.disabled=!v.available;
     sel.appendChild(o);
   });
+  sel.onchange=updateInstrumentMode;
+  updateInstrumentMode();
+}
+
+function updateInstrumentMode(){
+  const key=$('instrument-select').value;
+  const inst=INSTRUMENTS[key];
+  const isManual=inst&&inst.manualEntry;
+  $('photo-card').style.display=isManual?'none':'block';
+  $('manual-entry-card').style.display=isManual?'block':'none';
+  $('result-card').style.display='none';
+  $('field-date').value=today();
 }
 
 function initUpload(){
@@ -531,26 +570,15 @@ function renderResult(parsed,primaryFields,refFields,metaFields){
 }
 $('toggle-raw').onclick=()=>$('ocr-raw').classList.toggle('show');
 
-async function saveRecord(){
+async function persistRecord(nilai, meta, resetUI){
   const code=$('field-code').value.trim();
   const sampleLetter=$('field-sample-letter').value;
   const op=$('field-operator').value;
-  if(!code){toast('Isi Code/Trial dulu');return;}
-  if(!op){toast('Pilih nama operator dulu');return;}
+  if(!code){toast('Isi Code/Trial dulu');return false;}
+  if(!op){toast('Pilih nama operator dulu');return false;}
 
   const key=$('instrument-select').value;
   const inst=INSTRUMENTS[key];
-  const allFields=[...(inst.primaryFields||[]),...(inst.refFields||[])];
-  const nilai={};
-  $('result-grid').querySelectorAll('input.val').forEach(el=>{
-    const v=parseFloat(el.value);
-    nilai[el.dataset.key]=isNaN(v)?null:v;
-  });
-  const meta={};
-  (inst.metaFields||[]).forEach(mf=>{
-    const el=document.querySelector('[data-meta="'+mf.key+'"]');
-    meta[mf.key]=el?el.value||null:null;
-  });
 
   const record={
     id:'rec_'+Date.now(),
@@ -560,7 +588,7 @@ async function saveRecord(){
     tanggal:$('field-date').value||today(),
     operator:op,
     nilai:nilai,
-    meta:Object.keys(meta).length>0?meta:undefined,
+    meta:(meta&&Object.keys(meta).length>0)?meta:undefined,
     waktu_input:new Date().toISOString()
   };
 
@@ -581,16 +609,65 @@ async function saveRecord(){
   // Auto-advance sample letter
   const nextLetter=nextSample(sampleLetter);
   $('field-sample-letter').value=nextLetter;
-  // Reset foto & hasil
-  $('file-input').value='';
-  $('preview-area').innerHTML='';
-  $('read-btn').disabled=true;
-  $('result-card').style.display='none';
-  $('ocr-raw').classList.remove('show');
-  imgDataUrl=null;ocrText='';
-  // Scroll ke atas form untuk foto berikutnya
-  $('upload-zone').scrollIntoView({behavior:'smooth',block:'center'});
+  if(resetUI)resetUI();
+  return true;
 }
+
+async function saveRecord(){
+  const key=$('instrument-select').value;
+  const inst=INSTRUMENTS[key];
+  const nilai={};
+  $('result-grid').querySelectorAll('input.val').forEach(el=>{
+    const v=parseFloat(el.value);
+    nilai[el.dataset.key]=isNaN(v)?null:v;
+  });
+  const meta={};
+  (inst.metaFields||[]).forEach(mf=>{
+    const el=document.querySelector('[data-meta="'+mf.key+'"]');
+    meta[mf.key]=el?el.value||null:null;
+  });
+
+  await persistRecord(nilai, meta, ()=>{
+    $('file-input').value='';
+    $('preview-area').innerHTML='';
+    $('read-btn').disabled=true;
+    $('result-card').style.display='none';
+    $('ocr-raw').classList.remove('show');
+    imgDataUrl=null;ocrText='';
+    $('upload-zone').scrollIntoView({behavior:'smooth',block:'center'});
+  });
+}
+
+async function saveManualRecord(){
+  const before=parseFloat($('manual-before').value);
+  const after=parseFloat($('manual-after').value);
+  if(isNaN(before)||isNaN(after)){toast('Isi berat before dan after dulu');return;}
+  const cobb=Math.round((after-before)*100*100)/100;
+
+  const nilai={Cobb:cobb, before:before, after:after};
+
+  const ok=await persistRecord(nilai, {}, ()=>{
+    $('manual-before').value='';
+    $('manual-after').value='';
+    $('manual-result-display').textContent='-';
+    $('manual-entry-card').scrollIntoView({behavior:'smooth',block:'center'});
+  });
+}
+
+function updateManualCalc(){
+  const before=parseFloat($('manual-before').value);
+  const after=parseFloat($('manual-after').value);
+  const display=$('manual-result-display');
+  if(!isNaN(before)&&!isNaN(after)){
+    const cobb=Math.round((after-before)*100*100)/100;
+    display.textContent=cobb;
+    display.style.color=cobb>=0?'var(--moss-d)':'var(--rust)';
+  } else {
+    display.textContent='-';
+    display.style.color='var(--ink-f)';
+  }
+}
+
 
 // HISTORY - grouped by Code
 async function renderHistory(){
@@ -700,7 +777,7 @@ async function delRecord(id,instrument){
   renderHistory();toast('Data dihapus');
 }
 
-async function exportCSV(){
+async function getAllRecordsGrouped(){
   const url=getUrl();let records=loadLocal();
   if(url){
     try{
@@ -710,17 +787,89 @@ async function exportCSV(){
       records=combined;
     }catch(e){}
   }
-  if(!records.length){toast('Belum ada data');return;}
-  const header=['instrument','code','sample','tanggal','operator','F','R','Rd','waktu_input'];
-  const rows=records.map(r=>[
-    r.instrument||'',r.code||'',r.sample||'',r.tanggal||'',r.operator||'',
-    r.nilai&&r.nilai.F!=null?r.nilai.F:'',
-    r.nilai&&r.nilai.R!=null?r.nilai.R:'',
-    r.nilai&&r.nilai.Rd!=null?r.nilai.Rd:'',
-    r.waktu_input||''
-  ]);
+  return records;
+}
+
+function buildPivotCSV(instKey, records, fieldKey, unit){
+  const filtered=records.filter(r=>r.instrument===instKey);
+  if(!filtered.length)return null;
+
+  // Kumpulkan semua huruf sample yang pernah dipakai, urutkan A-E
+  const lettersUsed=new Set();
+  filtered.forEach(r=>{if(r.sample)lettersUsed.add(r.sample);});
+  const letters='ABCDE'.split('').filter(l=>lettersUsed.has(l));
+  if(letters.length===0)letters.push('A');
+
+  // Group by code
+  const byCode={};
+  filtered.forEach(r=>{
+    const c=r.code!=null?r.code:'?';
+    if(!byCode[c])byCode[c]={};
+    byCode[c][r.sample]=r.nilai&&r.nilai[fieldKey]!=null?r.nilai[fieldKey]:null;
+  });
+
+  const codes=Object.keys(byCode).sort((a,b)=>parseFloat(a)-parseFloat(b));
+  const header=['Code',...letters.map(l=>l.toLowerCase()),'AVG'];
+  const rows=codes.map(code=>{
+    const vals=letters.map(l=>byCode[code][l]!=null?byCode[code][l]:'');
+    const numeric=vals.filter(v=>v!=='').map(v=>parseFloat(v));
+    const avg=numeric.length>0?(numeric.reduce((a,b)=>a+b,0)/numeric.length):'';
+    return [code,...vals,avg!==''?Math.round(avg*100)/100:''];
+  });
+
+  const titleRow=['Code','',...Array(letters.length-1).fill(''),''];
+  const csvLines=[];
+  csvLines.push(`"${instKey} (${unit||''})"`);
+  csvLines.push(header.map(v=>'"'+v+'"').join(','));
+  rows.forEach(row=>csvLines.push(row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')));
+  return csvLines.join('\n');
+}
+
+function buildFlatCSV(instKey, records, allFieldKeys){
+  const filtered=records.filter(r=>r.instrument===instKey);
+  if(!filtered.length)return null;
+  const header=['Code','Sample','Tanggal','Operator',...allFieldKeys,'Waktu Input'];
+  const rows=filtered
+    .sort((a,b)=>(a.code-b.code)||String(a.sample).localeCompare(String(b.sample)))
+    .map(r=>[
+      r.code||'',r.sample||'',r.tanggal||'',r.operator||'',
+      ...allFieldKeys.map(k=>r.nilai&&r.nilai[k]!=null?r.nilai[k]:''),
+      r.waktu_input||''
+    ]);
   const csv=[header,...rows].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='pnshar_rct_data.csv';a.click();
+  return csv;
+}
+
+function downloadCSVFile(content,filename){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type:'text/csv'}));
+  a.download=filename;
+  a.click();
+}
+
+async function exportCSV(){
+  const records=await getAllRecordsGrouped();
+  if(!records.length){toast('Belum ada data');return;}
+
+  let anyExported=false;
+  for(const [instKey,inst] of Object.entries(INSTRUMENTS)){
+    if(!inst.available)continue;
+    const hasData=records.some(r=>r.instrument===instKey);
+    if(!hasData)continue;
+
+    const primaryFields=inst.primaryFields||[];
+    if(primaryFields.length===1){
+      // Format pivot: Code | a | b | c | AVG (sesuai contoh Cobb)
+      const csv=buildPivotCSV(instKey,records,primaryFields[0].key,primaryFields[0].unit);
+      if(csv){downloadCSVFile(csv,'pnshar_'+instKey.toLowerCase()+'_pivot.csv');anyExported=true;}
+    } else {
+      // Format flat: banyak kolom nilai per baris (Tensile, Tearing)
+      const allKeys=[...primaryFields.map(f=>f.key),...(inst.refFields||[]).map(f=>f.key)];
+      const csv=buildFlatCSV(instKey,records,allKeys);
+      if(csv){downloadCSVFile(csv,'pnshar_'+instKey.toLowerCase()+'_data.csv');anyExported=true;}
+    }
+  }
+  if(!anyExported)toast('Belum ada data untuk diexport');
 }
 
 $('save-vision-btn').onclick=()=>{
@@ -747,6 +896,9 @@ $('to-settings').onclick=()=>switchTab('settings');
 initTabs();initInstrument();initUpload();
 $('read-btn').onclick=readReceipt;
 $('save-btn').onclick=saveRecord;
+$('manual-before').oninput=updateManualCalc;
+$('manual-after').oninput=updateManualCalc;
+$('save-manual-btn').onclick=saveManualRecord;
 $('refresh-btn').onclick=renderHistory;
 $('export-csv').onclick=exportCSV;
 
