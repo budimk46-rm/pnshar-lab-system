@@ -182,21 +182,12 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
     </div>
 
     <div class="card" id="manual-entry-card" style="display:none">
-      <h2><span class="num">2</span>Timbang &amp; hitung Cobb</h2>
-      <div class="field-row">
-        <div>
-          <label>Berat Before (gram)</label>
-          <input type="number" id="manual-before" inputmode="decimal" step="0.01" placeholder="0.00" style="font-size:22px;font-weight:700;text-align:center;padding:14px 10px;">
-        </div>
-        <div>
-          <label>Berat After (gram)</label>
-          <input type="number" id="manual-after" inputmode="decimal" step="0.01" placeholder="0.00" style="font-size:22px;font-weight:700;text-align:center;padding:14px 10px;">
-        </div>
-      </div>
+      <h2><span class="num">2</span><span id="manual-entry-title">Entry data</span></h2>
+      <div class="field-row" id="manual-fields-container"></div>
       <div style="margin-top:16px;background:var(--moss-p);border-radius:10px;padding:16px;text-align:center;">
-        <div style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-d);opacity:.75;">Nilai Cobb60</div>
+        <div style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-d);opacity:.75;" id="manual-result-label">Nilai</div>
         <div id="manual-result-display" style="font-size:32px;font-weight:700;color:var(--ink-f);margin-top:4px;">-</div>
-        <div style="font-size:11px;color:var(--moss-d);opacity:.7;">g/m² &nbsp;=&nbsp; (After − Before) × 100</div>
+        <div style="font-size:11px;color:var(--moss-d);opacity:.7;" id="manual-formula-note"></div>
       </div>
       <button class="btn-primary" id="save-manual-btn" style="margin-top:14px">Simpan</button>
     </div>
@@ -276,9 +267,29 @@ const INSTRUMENTS = {
     manualEntry:true,
     primaryFields:[{key:'Cobb',unit:'g/m\u00b2'}],
     refFields:[{key:'before',unit:'gram'},{key:'after',unit:'gram'}],
+    manualFields:[
+      {key:'before',label:'Berat Before (gram)'},
+      {key:'after',label:'Berat After (gram)'}
+    ],
+    manualFormula:(v)=>Math.round((v.after-v.before)*100*100)/100,
+    manualResultLabel:'Nilai Cobb60',
+    manualFormulaNote:'(After \u2212 Before) \u00d7 100',
     available:true, sheet:'records_cobb'
   },
-  BURSTING:{label:'Bursting Tester',primaryFields:[],refFields:[],available:false},
+  BURSTING:{
+    label:'Bursting Tester',
+    manualEntry:true,
+    primaryFields:[{key:'Bursting',unit:'kgf'}],
+    refFields:[{key:'top',unit:'kgf'},{key:'bottom',unit:'kgf'}],
+    manualFields:[
+      {key:'top',label:'Top (kgf)'},
+      {key:'bottom',label:'Bottom (kgf)'}
+    ],
+    manualFormula:(v)=>Math.round(((v.top+v.bottom)/2)*100)/100,
+    manualResultLabel:'Nilai Bursting',
+    manualFormulaNote:'(Top + Bottom) \u00f7 2',
+    available:true, sheet:'records_bursting'
+  },
   IB:{label:'Internal Bond Tester',primaryFields:[],refFields:[],available:false}
 };
 
@@ -343,6 +354,31 @@ function updateInstrumentMode(){
   $('manual-entry-card').style.display=isManual?'block':'none';
   $('result-card').style.display='none';
   $('field-date').value=today();
+
+  if(isManual){
+    buildManualFields(inst);
+  }
+}
+
+function buildManualFields(inst){
+  $('manual-entry-title').textContent='Entry data '+inst.label;
+  $('manual-result-label').textContent=inst.manualResultLabel||'Nilai';
+  const unit=(inst.primaryFields&&inst.primaryFields[0])?inst.primaryFields[0].unit:'';
+  $('manual-formula-note').textContent=unit+(inst.manualFormulaNote?' \u00a0=\u00a0 '+inst.manualFormulaNote:'');
+
+  const container=$('manual-fields-container');
+  container.innerHTML='';
+  (inst.manualFields||[]).forEach(mf=>{
+    const div=document.createElement('div');
+    div.innerHTML='<label>'+mf.label+'</label>'+
+      '<input type="number" class="manual-input" data-key="'+mf.key+'" inputmode="decimal" step="0.01" placeholder="0.00" style="font-size:22px;font-weight:700;text-align:center;padding:14px 10px;">';
+    container.appendChild(div);
+  });
+  // Pasang event listener ke semua input manual yang baru dibuat
+  container.querySelectorAll('.manual-input').forEach(el=>{
+    el.oninput=updateManualCalc;
+  });
+  updateManualCalc();
 }
 
 function initUpload(){
@@ -639,29 +675,54 @@ async function saveRecord(){
 }
 
 async function saveManualRecord(){
-  const before=parseFloat($('manual-before').value);
-  const after=parseFloat($('manual-after').value);
-  if(isNaN(before)||isNaN(after)){toast('Isi berat before dan after dulu');return;}
-  const cobb=Math.round((after-before)*100*100)/100;
+  const key=$('instrument-select').value;
+  const inst=INSTRUMENTS[key];
+  const manualFields=inst.manualFields||[];
 
-  const nilai={Cobb:cobb, before:before, after:after};
+  const values={};
+  let anyInvalid=false;
+  manualFields.forEach(mf=>{
+    const el=document.querySelector('.manual-input[data-key="'+mf.key+'"]');
+    const v=parseFloat(el?el.value:'');
+    if(isNaN(v))anyInvalid=true;
+    values[mf.key]=v;
+  });
+  if(anyInvalid){toast('Isi semua nilai terlebih dulu');return;}
 
-  const ok=await persistRecord(nilai, {}, ()=>{
-    $('manual-before').value='';
-    $('manual-after').value='';
+  const resultKey=inst.primaryFields[0].key;
+  const result=inst.manualFormula(values);
+  const nilai={};
+  nilai[resultKey]=result;
+  Object.assign(nilai,values);
+
+  await persistRecord(nilai, {}, ()=>{
+    document.querySelectorAll('.manual-input').forEach(el=>el.value='');
     $('manual-result-display').textContent='-';
+    $('manual-result-display').style.color='var(--ink-f)';
     $('manual-entry-card').scrollIntoView({behavior:'smooth',block:'center'});
   });
 }
 
 function updateManualCalc(){
-  const before=parseFloat($('manual-before').value);
-  const after=parseFloat($('manual-after').value);
+  const key=$('instrument-select').value;
+  const inst=INSTRUMENTS[key];
+  if(!inst||!inst.manualEntry)return;
+  const manualFields=inst.manualFields||[];
+
+  const values={};
+  let allFilled=true;
+  manualFields.forEach(mf=>{
+    const el=document.querySelector('.manual-input[data-key="'+mf.key+'"]');
+    const v=parseFloat(el?el.value:'');
+    if(isNaN(v))allFilled=false;
+    values[mf.key]=v;
+  });
+
   const display=$('manual-result-display');
-  if(!isNaN(before)&&!isNaN(after)){
-    const cobb=Math.round((after-before)*100*100)/100;
-    display.textContent=cobb;
-    display.style.color=cobb>=0?'var(--moss-d)':'var(--rust)';
+  if(allFilled){
+    const result=inst.manualFormula(values);
+    display.textContent=result;
+    display.style.color=result>=0?'var(--moss-d)':'var(--rust)';
   } else {
     display.textContent='-';
     display.style.color='var(--ink-f)';
@@ -896,8 +957,6 @@ $('to-settings').onclick=()=>switchTab('settings');
 initTabs();initInstrument();initUpload();
 $('read-btn').onclick=readReceipt;
 $('save-btn').onclick=saveRecord;
-$('manual-before').oninput=updateManualCalc;
-$('manual-after').oninput=updateManualCalc;
 $('save-manual-btn').onclick=saveManualRecord;
 $('refresh-btn').onclick=renderHistory;
 $('export-csv').onclick=exportCSV;
