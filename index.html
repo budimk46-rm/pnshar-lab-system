@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PNSHAR Lab">
 <link rel="apple-touch-icon" href="./icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   --ink:#1a2420;--ink-s:#4a5550;--ink-f:#8a9590;
@@ -212,7 +213,7 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       </div>
       <div class="toolbar">
         <button class="btn" id="refresh-btn">&#8635; Muat ulang</button>
-        <button class="btn" id="export-csv">Export CSV</button>
+        <button class="btn" id="export-csv">&#128228; Export &amp; Bagikan (Excel)</button>
       </div>
       <div id="history-area"></div>
     </div>
@@ -851,17 +852,15 @@ async function getAllRecordsGrouped(){
   return records;
 }
 
-function buildPivotCSV(instKey, records, fieldKey, unit){
+function buildPivotSheetData(instKey, records, fieldKey, unit){
   const filtered=records.filter(r=>r.instrument===instKey);
   if(!filtered.length)return null;
 
-  // Kumpulkan semua huruf sample yang pernah dipakai, urutkan A-E
   const lettersUsed=new Set();
   filtered.forEach(r=>{if(r.sample)lettersUsed.add(r.sample);});
   const letters='ABCDE'.split('').filter(l=>lettersUsed.has(l));
   if(letters.length===0)letters.push('A');
 
-  // Group by code
   const byCode={};
   filtered.forEach(r=>{
     const c=r.code!=null?r.code:'?';
@@ -875,18 +874,13 @@ function buildPivotCSV(instKey, records, fieldKey, unit){
     const vals=letters.map(l=>byCode[code][l]!=null?byCode[code][l]:'');
     const numeric=vals.filter(v=>v!=='').map(v=>parseFloat(v));
     const avg=numeric.length>0?(numeric.reduce((a,b)=>a+b,0)/numeric.length):'';
-    return [code,...vals,avg!==''?Math.round(avg*100)/100:''];
+    return [parseFloat(code),...vals,avg!==''?Math.round(avg*100)/100:''];
   });
 
-  const titleRow=['Code','',...Array(letters.length-1).fill(''),''];
-  const csvLines=[];
-  csvLines.push(`"${instKey} (${unit||''})"`);
-  csvLines.push(header.map(v=>'"'+v+'"').join(','));
-  rows.forEach(row=>csvLines.push(row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')));
-  return csvLines.join('\n');
+  return [[instKey+' ('+(unit||'')+')'],header,...rows];
 }
 
-function buildFlatCSV(instKey, records, allFieldKeys){
+function buildFlatSheetData(instKey, records, allFieldKeys){
   const filtered=records.filter(r=>r.instrument===instKey);
   if(!filtered.length)return null;
   const header=['Code','Sample','Tanggal','Operator',...allFieldKeys,'Waktu Input'];
@@ -897,40 +891,64 @@ function buildFlatCSV(instKey, records, allFieldKeys){
       ...allFieldKeys.map(k=>r.nilai&&r.nilai[k]!=null?r.nilai[k]:''),
       r.waktu_input||''
     ]);
-  const csv=[header,...rows].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  return csv;
+  return [header,...rows];
 }
 
-function downloadCSVFile(content,filename){
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([content],{type:'text/csv'}));
-  a.download=filename;
-  a.click();
-}
+function buildWorkbook(records){
+  const wb=XLSX.utils.book_new();
+  let anySheet=false;
 
-async function exportCSV(){
-  const records=await getAllRecordsGrouped();
-  if(!records.length){toast('Belum ada data');return;}
-
-  let anyExported=false;
   for(const [instKey,inst] of Object.entries(INSTRUMENTS)){
     if(!inst.available)continue;
     const hasData=records.some(r=>r.instrument===instKey);
     if(!hasData)continue;
 
     const primaryFields=inst.primaryFields||[];
+    let sheetData=null;
     if(primaryFields.length===1){
-      // Format pivot: Code | a | b | c | AVG (sesuai contoh Cobb)
-      const csv=buildPivotCSV(instKey,records,primaryFields[0].key,primaryFields[0].unit);
-      if(csv){downloadCSVFile(csv,'pnshar_'+instKey.toLowerCase()+'_pivot.csv');anyExported=true;}
+      sheetData=buildPivotSheetData(instKey,records,primaryFields[0].key,primaryFields[0].unit);
     } else {
-      // Format flat: banyak kolom nilai per baris (Tensile, Tearing)
       const allKeys=[...primaryFields.map(f=>f.key),...(inst.refFields||[]).map(f=>f.key)];
-      const csv=buildFlatCSV(instKey,records,allKeys);
-      if(csv){downloadCSVFile(csv,'pnshar_'+instKey.toLowerCase()+'_data.csv');anyExported=true;}
+      sheetData=buildFlatSheetData(instKey,records,allKeys);
+    }
+    if(sheetData){
+      const ws=XLSX.utils.aoa_to_sheet(sheetData);
+      XLSX.utils.book_append_sheet(wb,ws,instKey.substring(0,31));
+      anySheet=true;
     }
   }
-  if(!anyExported)toast('Belum ada data untuk diexport');
+  return anySheet?wb:null;
+}
+
+async function exportCSV(){
+  const records=await getAllRecordsGrouped();
+  if(!records.length){toast('Belum ada data');return;}
+
+  const wb=buildWorkbook(records);
+  if(!wb){toast('Belum ada data untuk diexport');return;}
+
+  const wbArrayBuffer=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const filename='pnshar_lab_data_'+today()+'.xlsx';
+  const blob=new Blob([wbArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const file=new File([blob],filename,{type:blob.type});
+
+  // Coba share langsung (WhatsApp, dll) kalau browser mendukung
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:'PNSHAR Lab Data',text:'Data hasil pengujian '+today()});
+      return;
+    }catch(err){
+      // User membatalkan share, atau gagal — lanjut fallback download
+      if(err.name==='AbortError')return;
+    }
+  }
+
+  // Fallback: download biasa
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+  toast('File tersimpan ke Downloads (share tidak didukung browser ini)');
 }
 
 $('save-vision-btn').onclick=()=>{
