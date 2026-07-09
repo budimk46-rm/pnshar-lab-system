@@ -203,6 +203,14 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
         <div style="font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">Nilai Tear per sample (kosongkan jika sample tidak diuji)</div>
         <div id="multi-sample-inputs" class="result-grid"></div>
       </div>
+      <div id="avg-readings-grid" style="display:none;">
+        <div style="font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">Nilai per pengujian (edit jika perlu)</div>
+        <div id="avg-readings-inputs" class="result-grid"></div>
+        <div style="margin-top:16px;background:var(--moss-p);border-radius:10px;padding:16px;text-align:center;">
+          <div style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-d);opacity:.75;" id="avg-readings-label">Nilai rata-rata</div>
+          <div id="avg-readings-result-display" style="font-size:32px;font-weight:700;color:var(--ink-f);margin-top:4px;">-</div>
+        </div>
+      </div>
       <p class="ref-note">R dan Rd disimpan sebagai referensi, tidak dipakai untuk kalkulasi.</p>
       <div class="conf-note" id="conf-note">Nilai berwarna kuning kurang yakin. Periksa dan koreksi sebelum menyimpan.</div>
       <span class="toggle-raw" id="toggle-raw">Lihat teks mentah OCR</span>
@@ -300,7 +308,14 @@ const INSTRUMENTS = {
     manualFormulaNote:'(Top + Bottom) \u00f7 2',
     available:true, sheet:'records_bursting'
   },
-  IB:{label:'Internal Bond Tester',primaryFields:[],refFields:[],available:false}
+  IB:{
+    label:'Internal Bond Tester',
+    avgFromReadings:true,
+    readingsCount:5,
+    primaryFields:[{key:'IB',unit:'J/m\u00b2'}],
+    refFields:[],
+    available:true, sheet:'records_ib'
+  }
 };
 
 const LOCAL_KEY='pnshar_records_v5';
@@ -522,11 +537,113 @@ async function readReceiptMultiSample(inst){
   }
 }
 
+async function readReceiptAvgReadings(inst){
+  const sl=$('status-line'),st=$('status-text'),eb=$('err-box'),rb=$('read-btn');
+  const pb=$('progress-bar'),pf=$('progress-fill');
+  sl.classList.add('show');pb.style.display='block';
+  eb.classList.remove('show');rb.disabled=true;
+
+  const visionKey=getVisionKey();
+  if(!visionKey){
+    eb.textContent='Gemini API Key belum diisi. Buka tab Pengaturan dan masukkan API key Anda.';
+    eb.classList.add('show');
+    sl.classList.remove('show');pb.style.display='none';rb.disabled=false;
+    return;
+  }
+
+  const count=inst.readingsCount||5;
+
+  try{
+    st.textContent='Mengirim foto ke Gemini...';
+    pf.style.width='20%';
+
+    const base64Image=imgDataUrl.split(',')[1];
+    const mimeType=imgDataUrl.split(';')[0].split(':')[1]||'image/jpeg';
+
+    const prompt=`Ini adalah foto layar monitor alat Internal Bond Tester. `+
+      `Layar menampilkan daftar hasil pengujian bernomor urut seperti "01: angka", "02: angka", dst, sampai maksimal ${count} baris (bisa kurang dari ${count} kalau belum semua pengujian selesai). `+
+      `Baca semua nilai pada daftar bernomor itu secara berurutan dari 01 sampai baris terakhir yang terisi. `+
+      `Kalau ada baris yang kosong/belum ada angkanya, isi null untuk baris itu. `+
+      `Balas HANYA dengan JSON murni tanpa markdown code block, tanpa penjelasan apapun, format persis: `+
+      `{"readings": [array angka urut 01,02,...,${count}, isi null untuk baris kosong]}`;
+
+    pf.style.width='40%';
+
+    const response=await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+visionKey,
+      {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          contents:[{
+            parts:[
+              {inline_data:{mime_type:mimeType,data:base64Image}},
+              {text:prompt}
+            ]
+          }],
+          generationConfig:{temperature:0,maxOutputTokens:1024,thinkingConfig:{thinkingBudget:0}}
+        })
+      }
+    );
+
+    pf.style.width='75%';
+
+    if(!response.ok){
+      const errData=await response.json().catch(()=>({}));
+      const errMsg=(errData.error&&errData.error.message)||'HTTP '+response.status;
+      throw new Error(errMsg);
+    }
+
+    const data=await response.json();
+    pf.style.width='90%';
+
+    const candidate=data?.candidates?.[0];
+    const rawText=candidate?.content?.parts?.[0]?.text||'';
+    ocrText=rawText||'(kosong \u2014 lihat detail di bawah)';
+    $('ocr-raw').textContent=JSON.stringify(data,null,2);
+
+    if(!rawText){
+      const finishReason=candidate?.finishReason||'UNKNOWN';
+      throw new Error('Respons kosong dari Gemini (finishReason: '+finishReason+'). Coba foto ulang dengan pencahayaan lebih baik.');
+    }
+
+    const clean=rawText.replace(/```json|```/g,'').trim();
+    const json=JSON.parse(clean);
+
+    let readings=Array.isArray(json.readings)?json.readings.map(v=>{
+      const n=parseFloat(v);
+      return (v===null||v===undefined||isNaN(n))?null:n;
+    }):new Array(count).fill(null);
+    while(readings.length<count)readings.push(null);
+
+    renderAvgReadingsResult(readings, inst);
+
+  }catch(err){
+    let msg=err.message;
+    if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')){
+      msg='API Key tidak valid. Cek kembali key di tab Pengaturan.';
+    } else if(msg.includes('Failed to fetch')||msg.includes('NetworkError')){
+      msg='Tidak ada koneksi internet. Pastikan terhubung ke WiFi/data.';
+    } else {
+      msg='Error: '+msg;
+    }
+    eb.textContent='Gagal membaca foto: '+msg;
+    eb.classList.add('show');
+    renderAvgReadingsResult(new Array(count).fill(null), inst);
+  }finally{
+    sl.classList.remove('show');pb.style.display='none';pf.style.width='0%';rb.disabled=false;
+  }
+}
+
 async function readReceipt(){
   const instKeyCheck=$('instrument-select').value;
   const instCheck=INSTRUMENTS[instKeyCheck];
   if(instCheck&&instCheck.multiSample){
     await readReceiptMultiSample(instCheck);
+    return;
+  }
+  if(instCheck&&instCheck.avgFromReadings){
+    await readReceiptAvgReadings(instCheck);
     return;
   }
 
@@ -700,6 +817,7 @@ function renderMetaSection(meta, metaFields, anchorEl){
 
 function renderResult(parsed,primaryFields,refFields,metaFields){
   $('multi-sample-grid').style.display='none';
+  $('avg-readings-grid').style.display='none';
   const grid=$('result-grid');
   grid.style.display='grid';
   grid.innerHTML='';
@@ -736,6 +854,7 @@ function renderResult(parsed,primaryFields,refFields,metaFields){
 
 function renderMultiSampleResult(tearValues, meta, inst){
   $('result-grid').style.display='none';
+  $('avg-readings-grid').style.display='none';
   const msGrid=$('multi-sample-grid');
   msGrid.style.display='block';
 
@@ -758,6 +877,52 @@ function renderMultiSampleResult(tearValues, meta, inst){
   $('conf-note').classList.toggle('show', tearValues.some(v=>v===null||v===undefined));
   $('result-card').style.display='block';
   $('result-card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function renderAvgReadingsResult(readings, inst){
+  $('result-grid').style.display='none';
+  $('multi-sample-grid').style.display='none';
+  const arGrid=$('avg-readings-grid');
+  arGrid.style.display='block';
+
+  const primaryLabel=inst.primaryFields[0].key;
+  const unit=inst.primaryFields[0].unit;
+  $('avg-readings-label').textContent='Nilai '+primaryLabel+' (rata-rata)';
+
+  const container=$('avg-readings-inputs');
+  container.innerHTML='';
+  readings.forEach((val,i)=>{
+    const isLow=(val===null||val===undefined);
+    const div=document.createElement('div');
+    div.className='stat'+(isLow?' low-conf':'');
+    div.innerHTML='<div class="lbl">'+String(i+1).padStart(2,'0')+'</div><input class="val avg-reading-input" type="number" step="0.01" value="'+(val!=null?val:'')+'" placeholder="-"><div class="unit">'+unit+'</div>';
+    container.appendChild(div);
+  });
+
+  container.querySelectorAll('.avg-reading-input').forEach(el=>{
+    el.oninput=updateAvgReadingsCalc;
+  });
+
+  updateAvgReadingsCalc();
+
+  $('field-date').value=today();
+  $('conf-note').classList.toggle('show', readings.some(v=>v===null||v===undefined));
+  $('result-card').style.display='block';
+  $('result-card').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function updateAvgReadingsCalc(){
+  const inputs=document.querySelectorAll('.avg-reading-input');
+  const values=Array.from(inputs).map(el=>parseFloat(el.value)).filter(v=>!isNaN(v));
+  const display=$('avg-readings-result-display');
+  if(values.length>0){
+    const avg=Math.round((values.reduce((a,b)=>a+b,0)/values.length)*1000)/1000;
+    display.textContent=avg;
+    display.style.color='var(--moss-d)';
+  } else {
+    display.textContent='-';
+    display.style.color='var(--ink-f)';
+  }
 }
 $('toggle-raw').onclick=()=>$('ocr-raw').classList.toggle('show');
 
@@ -812,6 +977,10 @@ async function saveRecord(){
 
   if(inst.multiSample){
     await saveMultiSampleRecord(inst);
+    return;
+  }
+  if(inst.avgFromReadings){
+    await saveAvgReadingsRecord(inst);
     return;
   }
 
@@ -877,6 +1046,30 @@ async function saveMultiSampleRecord(inst){
   imgDataUrl=null;ocrText='';
   $('field-sample-letter').value='A';
   $('upload-zone').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+async function saveAvgReadingsRecord(inst){
+  const inputs=document.querySelectorAll('.avg-reading-input');
+  const values=Array.from(inputs).map(el=>parseFloat(el.value)).filter(v=>!isNaN(v));
+
+  if(values.length===0){toast('Isi minimal satu nilai pengujian');return;}
+
+  const avg=Math.round((values.reduce((a,b)=>a+b,0)/values.length)*1000)/1000;
+  const resultKey=inst.primaryFields[0].key;
+  const nilai={};
+  nilai[resultKey]=avg;
+
+  const meta={readings: values.join(', ')};
+
+  await persistRecord(nilai, meta, ()=>{
+    $('file-input').value='';
+    $('preview-area').innerHTML='';
+    $('read-btn').disabled=true;
+    $('result-card').style.display='none';
+    $('ocr-raw').classList.remove('show');
+    imgDataUrl=null;ocrText='';
+    $('upload-zone').scrollIntoView({behavior:'smooth',block:'center'});
+  });
 }
 
 async function saveManualRecord(){
