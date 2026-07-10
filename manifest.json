@@ -1,6 +1,6 @@
 {
-  "name": "PNSHAR Lab System",
-  "short_name": "PNSHAR Lab",
+  "name": "APC Lab System",
+  "short_name": "APC Lab",
   "description": "Aplikasi entry data pengujian laboratorium kertas — APC Group",
   "start_url": "./index.html",
   "scope": "./",
