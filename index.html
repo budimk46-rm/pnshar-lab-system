@@ -139,6 +139,12 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       <select id="instrument-select" style="margin-bottom:12px;font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;"></select>
       <div class="field-row">
         <div>
+          <label>No. Project</label>
+          <input type="text" id="field-project" maxlength="10" placeholder="contoh: LT024" style="text-transform:uppercase;font-weight:700;">
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
           <label>Code / Trial</label>
           <input type="number" id="field-code" min="1" placeholder="contoh: 1">
         </div>
@@ -322,6 +328,7 @@ const INSTRUMENTS = {
 const LOCAL_KEY='pnshar_records_v5';
 const URL_KEY='pnshar_script_url';
 const VISION_KEY='pnshar_vision_key';
+const PROJECT_KEY='pnshar_last_project';
 let imgDataUrl=null, ocrText='';
 
 const $=id=>document.getElementById(id);
@@ -329,6 +336,8 @@ const getUrl=()=>localStorage.getItem(URL_KEY)||'';
 const setUrl=v=>localStorage.setItem(URL_KEY,v);
 const getVisionKey=()=>localStorage.getItem(VISION_KEY)||'';
 const setVisionKey=v=>localStorage.setItem(VISION_KEY,v);
+const getLastProject=()=>localStorage.getItem(PROJECT_KEY)||'';
+const setLastProject=v=>localStorage.setItem(PROJECT_KEY,v);
 function loadLocal(){try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||'[]');}catch(e){return[];}}
 function saveLocal(r){localStorage.setItem(LOCAL_KEY,JSON.stringify(r));}
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
@@ -928,9 +937,11 @@ function updateAvgReadingsCalc(){
 $('toggle-raw').onclick=()=>$('ocr-raw').classList.toggle('show');
 
 async function persistRecord(nilai, meta, resetUI, sampleLetterOverride, silent){
+  const project=$('field-project').value.trim();
   const code=$('field-code').value.trim();
   const sampleLetter=sampleLetterOverride||$('field-sample-letter').value;
   const op=$('field-operator').value;
+  if(!project){toast('Isi No. Project dulu');return false;}
   if(!code){toast('Isi Code/Trial dulu');return false;}
   if(!op){toast('Pilih nama operator dulu');return false;}
 
@@ -940,6 +951,7 @@ async function persistRecord(nilai, meta, resetUI, sampleLetterOverride, silent)
   const record={
     id:'rec_'+Date.now()+'_'+sampleLetter,
     instrument:key,
+    no_project:project,
     code:parseInt(code),
     sample:sampleLetter,
     tanggal:$('field-date').value||today(),
@@ -957,10 +969,10 @@ async function persistRecord(nilai, meta, resetUI, sampleLetterOverride, silent)
     try{
       const payload=Object.assign({action:'save',sheet:sheetTarget},record);
       await fetch(url+'?data='+encodeURIComponent(JSON.stringify(payload)),{method:'GET',mode:'no-cors'});
-      if(!silent)toast('Code '+code+'-'+sampleLetter+' tersimpan \u2713');
+      if(!silent)toast(project+' Code '+code+'-'+sampleLetter+' tersimpan \u2713');
     }catch(e){if(!silent)toast('Tersimpan lokal. Gagal sync Sheets.');}
   } else {
-    if(!silent)toast('Code '+code+'-'+sampleLetter+' tersimpan');
+    if(!silent)toast(project+' Code '+code+'-'+sampleLetter+' tersimpan');
   }
 
   if(!sampleLetterOverride){
@@ -1008,8 +1020,10 @@ async function saveRecord(){
 }
 
 async function saveMultiSampleRecord(inst){
+  const project=$('field-project').value.trim();
   const code=$('field-code').value.trim();
   const op=$('field-operator').value;
+  if(!project){toast('Isi No. Project dulu');return;}
   if(!code){toast('Isi Code/Trial dulu');return;}
   if(!op){toast('Pilih nama operator dulu');return;}
 
@@ -1037,7 +1051,7 @@ async function saveMultiSampleRecord(inst){
 
   // Sync ke tab Riwayat juga
   const url=getUrl();
-  toast(savedCount+' sample tersimpan untuk Code '+code+(url?' \u2713':' (lokal)'));
+  toast(savedCount+' sample tersimpan untuk '+project+' Code '+code+(url?' \u2713':' (lokal)'));
 
   $('file-input').value='';
   $('preview-area').innerHTML='';
@@ -1155,18 +1169,20 @@ async function renderHistory(){
     area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data.</p></div>';return;
   }
 
-  // Group by instrument + code
+  // Group by instrument + no_project + code
   const groups={};
   records.forEach(r=>{
-    const gkey=(r.instrument||'?')+'_'+(r.code||'?');
-    if(!groups[gkey])groups[gkey]={instrument:r.instrument,code:r.code,samples:[]};
+    const proj=r.no_project||'-';
+    const gkey=(r.instrument||'?')+'_'+proj+'_'+(r.code||'?');
+    if(!groups[gkey])groups[gkey]={instrument:r.instrument,no_project:proj,code:r.code,samples:[]};
     groups[gkey].samples.push(r);
   });
 
-  // Sort groups by instrument then code
+  // Sort groups by instrument, then project, then code
   const sortedKeys=Object.keys(groups).sort((a,b)=>{
     const ga=groups[a],gb=groups[b];
     if(ga.instrument!==gb.instrument)return ga.instrument.localeCompare(gb.instrument);
+    if(ga.no_project!==gb.no_project)return String(ga.no_project).localeCompare(String(gb.no_project));
     return (ga.code||0)-(gb.code||0);
   });
 
@@ -1187,7 +1203,7 @@ async function renderHistory(){
 
     html+='<div class="code-group">';
     html+='<div class="code-group-header">';
-    html+='<span class="code-label">'+(g.instrument||'?')+' \u2014 Code '+g.code+'</span>';
+    html+='<span class="code-label">'+(g.instrument||'?')+' \u2014 '+g.no_project+' / Code '+g.code+'</span>';
     if(avgStr)html+='<span class="avg-badge">avg: '+avgStr+'</span>';
     html+='</div>';
     html+='<div class="sample-list">';
@@ -1259,20 +1275,29 @@ function buildPivotSheetData(instKey, records, fieldKey, unit){
   const letters='ABCDE'.split('').filter(l=>lettersUsed.has(l));
   if(letters.length===0)letters.push('A');
 
-  const byCode={};
+  // Group by No.Project + Code (bukan Code saja) supaya tidak tercampur antar project
+  const byGroup={};
   filtered.forEach(r=>{
+    const proj=r.no_project||'-';
     const c=r.code!=null?r.code:'?';
-    if(!byCode[c])byCode[c]={};
-    byCode[c][r.sample]=r.nilai&&r.nilai[fieldKey]!=null?r.nilai[fieldKey]:null;
+    const gkey=proj+'||'+c;
+    if(!byGroup[gkey])byGroup[gkey]={project:proj,code:c,samples:{}};
+    byGroup[gkey].samples[r.sample]=r.nilai&&r.nilai[fieldKey]!=null?r.nilai[fieldKey]:null;
   });
 
-  const codes=Object.keys(byCode).sort((a,b)=>parseFloat(a)-parseFloat(b));
-  const header=['Code',...letters.map(l=>l.toLowerCase()),'AVG'];
-  const rows=codes.map(code=>{
-    const vals=letters.map(l=>byCode[code][l]!=null?byCode[code][l]:'');
+  const groupKeys=Object.keys(byGroup).sort((a,b)=>{
+    const ga=byGroup[a],gb=byGroup[b];
+    if(ga.project!==gb.project)return String(ga.project).localeCompare(String(gb.project));
+    return parseFloat(ga.code)-parseFloat(gb.code);
+  });
+
+  const header=['No. Project','Code',...letters.map(l=>l.toLowerCase()),'AVG'];
+  const rows=groupKeys.map(gkey=>{
+    const g=byGroup[gkey];
+    const vals=letters.map(l=>g.samples[l]!=null?g.samples[l]:'');
     const numeric=vals.filter(v=>v!=='').map(v=>parseFloat(v));
     const avg=numeric.length>0?(numeric.reduce((a,b)=>a+b,0)/numeric.length):'';
-    return [parseFloat(code),...vals,avg!==''?Math.round(avg*100)/100:''];
+    return [g.project,parseFloat(g.code),...vals,avg!==''?Math.round(avg*100)/100:''];
   });
 
   return [[instKey+' ('+(unit||'')+')'],header,...rows];
@@ -1281,11 +1306,11 @@ function buildPivotSheetData(instKey, records, fieldKey, unit){
 function buildFlatSheetData(instKey, records, allFieldKeys){
   const filtered=records.filter(r=>r.instrument===instKey);
   if(!filtered.length)return null;
-  const header=['Code','Sample','Tanggal','Operator',...allFieldKeys,'Waktu Input'];
+  const header=['No. Project','Code','Sample','Tanggal','Operator',...allFieldKeys,'Waktu Input'];
   const rows=filtered
-    .sort((a,b)=>(a.code-b.code)||String(a.sample).localeCompare(String(b.sample)))
+    .sort((a,b)=>String(a.no_project).localeCompare(String(b.no_project))||(a.code-b.code)||String(a.sample).localeCompare(String(b.sample)))
     .map(r=>[
-      r.code||'',r.sample||'',r.tanggal||'',r.operator||'',
+      r.no_project||'',r.code||'',r.sample||'',r.tanggal||'',r.operator||'',
       ...allFieldKeys.map(k=>r.nilai&&r.nilai[k]!=null?r.nilai[k]:''),
       r.waktu_input||''
     ]);
@@ -1376,6 +1401,14 @@ $('save-btn').onclick=saveRecord;
 $('save-manual-btn').onclick=saveManualRecord;
 $('refresh-btn').onclick=renderHistory;
 $('export-csv').onclick=exportCSV;
+
+// Setup field No. Project: load nilai terakhir, auto-uppercase, auto-simpan
+$('field-project').value=getLastProject();
+$('field-project').oninput=(e)=>{
+  const upper=e.target.value.toUpperCase();
+  e.target.value=upper;
+  setLastProject(upper);
+};
 
 // Registrasi service worker untuk PWA (install ke home screen)
 if('serviceWorker' in navigator){
