@@ -194,12 +194,9 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
 
     <div class="card" id="manual-entry-card" style="display:none">
       <h2><span class="num">2</span><span id="manual-entry-title">Entry data</span></h2>
+      <div class="field-row" id="dimension-fields-container" style="display:none;"></div>
       <div class="field-row" id="manual-fields-container"></div>
-      <div style="margin-top:16px;background:var(--moss-p);border-radius:10px;padding:16px;text-align:center;">
-        <div style="font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--moss-d);opacity:.75;" id="manual-result-label">Nilai</div>
-        <div id="manual-result-display" style="font-size:32px;font-weight:700;color:var(--ink-f);margin-top:4px;">-</div>
-        <div style="font-size:11px;color:var(--moss-d);opacity:.7;" id="manual-formula-note"></div>
-      </div>
+      <div id="manual-result-container" style="margin-top:16px;"></div>
       <button class="btn-primary" id="save-manual-btn" style="margin-top:14px">Simpan</button>
     </div>
 
@@ -322,6 +319,39 @@ const INSTRUMENTS = {
     primaryFields:[{key:'IB',unit:'J/m\u00b2'}],
     refFields:[],
     available:true, sheet:'records_ib'
+  },
+  BW_HANDSHEET:{
+    label:'Basis Weight \u2014 Handsheet',
+    manualEntry:true,
+    primaryFields:[{key:'BW',unit:'gsm'}],
+    refFields:[],
+    manualFields:[{key:'berat',label:'Berat (gram)'}],
+    manualFormula:(v)=>Math.round((v.berat/0.02)*100)/100,
+    manualResultLabel:'Nilai Basis Weight',
+    manualFormulaNote:'Berat \u00f7 0.02',
+    available:true, sheet:'records_bw_handsheet'
+  },
+  BW_COATING:{
+    label:'Basis Weight \u2014 Coating',
+    manualEntry:true,
+    needsDimension:true,
+    primaryFields:[
+      {key:'BW_Before',unit:'gsm'},
+      {key:'BW_After',unit:'gsm'},
+      {key:'Coating_Weight',unit:'gsm'}
+    ],
+    refFields:[],
+    manualFields:[
+      {key:'before',label:'Berat Before (gram)'},
+      {key:'after',label:'Berat After (gram)'}
+    ],
+    manualFormulaMulti:(v,area)=>{
+      const bwBefore=Math.round((v.before/area)*100)/100;
+      const bwAfter=Math.round((v.after/area)*100)/100;
+      const coatingWeight=Math.round((bwAfter-bwBefore)*100)/100;
+      return {BW_Before:bwBefore, BW_After:bwAfter, Coating_Weight:coatingWeight};
+    },
+    available:true, sheet:'records_bw_coating'
   }
 };
 
@@ -338,6 +368,9 @@ const getVisionKey=()=>localStorage.getItem(VISION_KEY)||'';
 const setVisionKey=v=>localStorage.setItem(VISION_KEY,v);
 const getLastProject=()=>localStorage.getItem(PROJECT_KEY)||'';
 const setLastProject=v=>localStorage.setItem(PROJECT_KEY,v);
+const DIM_KEY='pnshar_last_dimension';
+const getLastDimension=()=>{try{return JSON.parse(localStorage.getItem(DIM_KEY)||'{}');}catch(e){return{};}};
+const setLastDimension=(p,l)=>localStorage.setItem(DIM_KEY,JSON.stringify({panjang:p,lebar:l}));
 function loadLocal(){try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||'[]');}catch(e){return[];}}
 function saveLocal(r){localStorage.setItem(LOCAL_KEY,JSON.stringify(r));}
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
@@ -397,10 +430,23 @@ function updateInstrumentMode(){
 
 function buildManualFields(inst){
   $('manual-entry-title').textContent='Entry data '+inst.label;
-  $('manual-result-label').textContent=inst.manualResultLabel||'Nilai';
-  const unit=(inst.primaryFields&&inst.primaryFields[0])?inst.primaryFields[0].unit:'';
-  $('manual-formula-note').textContent=unit+(inst.manualFormulaNote?' \u00a0=\u00a0 '+inst.manualFormulaNote:'');
 
+  // Dimensi kertas (kalau instrumen butuh, misal Basis Weight Coating)
+  const dimContainer=$('dimension-fields-container');
+  if(inst.needsDimension){
+    dimContainer.style.display='flex';
+    const saved=getLastDimension();
+    dimContainer.innerHTML=
+      '<div><label>Panjang (cm)</label><input type="number" id="dim-panjang" inputmode="decimal" step="0.1" placeholder="contoh: 18" value="'+(saved.panjang||'')+'"></div>'+
+      '<div><label>Lebar (cm)</label><input type="number" id="dim-lebar" inputmode="decimal" step="0.1" placeholder="contoh: 27" value="'+(saved.lebar||'')+'"></div>';
+    $('dim-panjang').oninput=()=>{setLastDimension($('dim-panjang').value,$('dim-lebar').value);updateManualCalc();};
+    $('dim-lebar').oninput=()=>{setLastDimension($('dim-panjang').value,$('dim-lebar').value);updateManualCalc();};
+  } else {
+    dimContainer.style.display='none';
+    dimContainer.innerHTML='';
+  }
+
+  // Field input mentah (before/after, berat, dll)
   const container=$('manual-fields-container');
   container.innerHTML='';
   (inst.manualFields||[]).forEach(mf=>{
@@ -409,10 +455,23 @@ function buildManualFields(inst){
       '<input type="number" class="manual-input" data-key="'+mf.key+'" inputmode="decimal" step="0.01" placeholder="0.00" style="font-size:22px;font-weight:700;text-align:center;padding:14px 10px;">';
     container.appendChild(div);
   });
-  // Pasang event listener ke semua input manual yang baru dibuat
   container.querySelectorAll('.manual-input').forEach(el=>{
     el.oninput=updateManualCalc;
   });
+
+  // Siapkan container hasil (1 box untuk formula tunggal, beberapa box untuk formula multi)
+  const resultContainer=$('manual-result-container');
+  resultContainer.innerHTML='';
+  const resultFields=inst.primaryFields||[];
+  resultFields.forEach(f=>{
+    const box=document.createElement('div');
+    box.style.cssText='background:var(--moss-p);border-radius:10px;padding:14px;text-align:center;margin-bottom:8px;';
+    box.innerHTML='<div style="font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);opacity:.7;">'+f.key.replace(/_/g,' ')+'</div>'+
+      '<div class="manual-result-val" data-result-key="'+f.key+'" style="font-size:24px;font-weight:700;color:var(--ink-f);margin-top:2px;">-</div>'+
+      '<div style="font-size:10px;color:var(--ink);opacity:.6;">'+f.unit+'</div>';
+    resultContainer.appendChild(box);
+  });
+
   updateManualCalc();
 }
 
@@ -1092,6 +1151,14 @@ async function saveManualRecord(){
   const inst=INSTRUMENTS[key];
   const manualFields=inst.manualFields||[];
 
+  let area=null;
+  if(inst.needsDimension){
+    const panjang=parseFloat($('dim-panjang')?$('dim-panjang').value:'');
+    const lebar=parseFloat($('dim-lebar')?$('dim-lebar').value:'');
+    if(isNaN(panjang)||isNaN(lebar)){toast('Isi panjang dan lebar kertas dulu');return;}
+    area=(panjang*lebar)/10000;
+  }
+
   const values={};
   let anyInvalid=false;
   manualFields.forEach(mf=>{
@@ -1102,16 +1169,26 @@ async function saveManualRecord(){
   });
   if(anyInvalid){toast('Isi semua nilai terlebih dulu');return;}
 
-  const resultKey=inst.primaryFields[0].key;
-  const result=inst.manualFormula(values);
   const nilai={};
-  nilai[resultKey]=result;
+  if(inst.manualFormulaMulti){
+    const results=inst.manualFormulaMulti(values, area);
+    Object.assign(nilai, results);
+  } else {
+    const resultKey=inst.primaryFields[0].key;
+    nilai[resultKey]=inst.manualFormula(values);
+  }
   Object.assign(nilai,values);
 
-  await persistRecord(nilai, {}, ()=>{
+  const meta={};
+  if(inst.needsDimension){
+    meta.panjang=$('dim-panjang').value;
+    meta.lebar=$('dim-lebar').value;
+    meta.luas=area;
+  }
+
+  await persistRecord(nilai, meta, ()=>{
     document.querySelectorAll('.manual-input').forEach(el=>el.value='');
-    $('manual-result-display').textContent='-';
-    $('manual-result-display').style.color='var(--ink-f)';
+    document.querySelectorAll('.manual-result-val').forEach(el=>{el.textContent='-';el.style.color='var(--ink-f)';});
     $('manual-entry-card').scrollIntoView({behavior:'smooth',block:'center'});
   });
 }
@@ -1122,6 +1199,15 @@ function updateManualCalc(){
   if(!inst||!inst.manualEntry)return;
   const manualFields=inst.manualFields||[];
 
+  let area=null;
+  if(inst.needsDimension){
+    const panjang=parseFloat($('dim-panjang')?$('dim-panjang').value:'');
+    const lebar=parseFloat($('dim-lebar')?$('dim-lebar').value:'');
+    if(!isNaN(panjang)&&!isNaN(lebar)&&panjang>0&&lebar>0){
+      area=(panjang*lebar)/10000;
+    }
+  }
+
   const values={};
   let allFilled=true;
   manualFields.forEach(mf=>{
@@ -1130,15 +1216,22 @@ function updateManualCalc(){
     if(isNaN(v))allFilled=false;
     values[mf.key]=v;
   });
+  if(inst.needsDimension && area===null)allFilled=false;
 
-  const display=$('manual-result-display');
   if(allFilled){
-    const result=inst.manualFormula(values);
-    display.textContent=result;
-    display.style.color=result>=0?'var(--moss-d)':'var(--rust)';
+    let results;
+    if(inst.manualFormulaMulti){
+      results=inst.manualFormulaMulti(values, area);
+    } else {
+      results={};
+      results[inst.primaryFields[0].key]=inst.manualFormula(values);
+    }
+    Object.entries(results).forEach(([k,v])=>{
+      const el=document.querySelector('.manual-result-val[data-result-key="'+k+'"]');
+      if(el){el.textContent=v;el.style.color=v>=0?'var(--moss-d)':'var(--rust)';}
+    });
   } else {
-    display.textContent='-';
-    display.style.color='var(--ink-f)';
+    document.querySelectorAll('.manual-result-val').forEach(el=>{el.textContent='-';el.style.color='var(--ink-f)';});
   }
 }
 
