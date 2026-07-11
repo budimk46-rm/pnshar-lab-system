@@ -1448,14 +1448,19 @@ async function exportCSV(){
   const blob=new Blob([wbArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const file=new File([blob],filename,{type:blob.type});
 
-  // Coba share langsung (WhatsApp, dll) kalau browser mendukung
-  if(navigator.canShare && navigator.canShare({files:[file]})){
+  // Coba share langsung (WhatsApp, dll). Beberapa Chrome Android salah
+  // menganggap canShare() gagal untuk tipe file xlsx, padahal share()
+  // sebenarnya tetap berfungsi -- jadi kita coba langsung, bukan cuma
+  // mengandalkan hasil canShare() sebagai penentu.
+  if(navigator.share){
     try{
       await navigator.share({files:[file],title:'APC Lab Data',text:'Data hasil pengujian '+today()});
       return;
     }catch(err){
-      // User membatalkan share, atau gagal — lanjut fallback download
+      // User membatalkan share -> selesai, tidak perlu fallback
       if(err.name==='AbortError')return;
+      // Selain itu (termasuk NotAllowedError/TypeError karena tipe file
+      // ditolak), lanjut ke fallback download di bawah
     }
   }
 
