@@ -1436,40 +1436,61 @@ function buildWorkbook(records){
   return anySheet?wb:null;
 }
 
+let preparedExportFile=null;
+
 async function exportCSV(){
+  const btn=$('export-csv');
+
+  // Tap kedua: file sudah siap dari tap pertama -- share LANGSUNG
+  // tanpa await apapun di depan, supaya user-gesture masih dianggap segar.
+  if(preparedExportFile){
+    const file=preparedExportFile;
+    preparedExportFile=null;
+    btn.textContent='\u{1F4E4} Export & Bagikan (Excel)';
+    if(navigator.share){
+      navigator.share({files:[file],title:'APC Lab Data',text:'Data hasil pengujian '+today()})
+        .catch(err=>{
+          if(err.name!=='AbortError'){
+            const a=document.createElement('a');
+            a.href=URL.createObjectURL(file);
+            a.download=file.name;
+            a.click();
+            toast('Share tidak didukung, file didownload sebagai gantinya');
+          }
+        });
+    } else {
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(file);
+      a.download=file.name;
+      a.click();
+    }
+    return;
+  }
+
+  // Tap pertama: siapkan file (boleh ada await di sini)
+  btn.textContent='Menyiapkan file...';
   const records=await getAllRecordsGrouped();
-  if(!records.length){toast('Belum ada data');return;}
+  if(!records.length){toast('Belum ada data');btn.textContent='\u{1F4E4} Export & Bagikan (Excel)';return;}
 
   const wb=buildWorkbook(records);
-  if(!wb){toast('Belum ada data untuk diexport');return;}
+  if(!wb){toast('Belum ada data untuk diexport');btn.textContent='\u{1F4E4} Export & Bagikan (Excel)';return;}
 
   const wbArrayBuffer=XLSX.write(wb,{bookType:'xlsx',type:'array'});
   const filename='pnshar_lab_data_'+today()+'.xlsx';
   const blob=new Blob([wbArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const file=new File([blob],filename,{type:blob.type});
 
-  // Coba share langsung (WhatsApp, dll). Beberapa Chrome Android salah
-  // menganggap canShare() gagal untuk tipe file xlsx, padahal share()
-  // sebenarnya tetap berfungsi -- jadi kita coba langsung, bukan cuma
-  // mengandalkan hasil canShare() sebagai penentu.
   if(navigator.share){
-    try{
-      await navigator.share({files:[file],title:'APC Lab Data',text:'Data hasil pengujian '+today()});
-      return;
-    }catch(err){
-      // User membatalkan share -> selesai, tidak perlu fallback
-      if(err.name==='AbortError')return;
-      // Selain itu (termasuk NotAllowedError/TypeError karena tipe file
-      // ditolak), lanjut ke fallback download di bawah
-    }
+    preparedExportFile=file;
+    btn.textContent='\u2705 Tap sekali lagi untuk Bagikan';
+    toast('File siap! Tap tombol sekali lagi untuk share ke WA/dll');
+  } else {
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=filename;
+    a.click();
+    btn.textContent='\u{1F4E4} Export & Bagikan (Excel)';
   }
-
-  // Fallback: download biasa
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=filename;
-  a.click();
-  toast('File tersimpan ke Downloads (share tidak didukung browser ini)');
 }
 
 $('save-vision-btn').onclick=()=>{
