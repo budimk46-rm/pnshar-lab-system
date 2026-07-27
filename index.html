@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="APC Lab">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 :root{
   --ink:#1a2420;--ink-s:#4a5550;--ink-f:#8a9590;
@@ -235,11 +236,15 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       </div>
       <div class="field-row" style="margin-bottom:10px;">
         <div>
-          <label>Export alat</label>
+          <label>Pilih alat (grafik &amp; export)</label>
           <select id="export-instrument-select" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
             <option value="ALL">Semua alat</option>
           </select>
         </div>
+      </div>
+      <div id="chart-section" style="display:none;background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px;">
+        <div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;" id="chart-title">Grafik</div>
+        <canvas id="history-chart" height="180"></canvas>
       </div>
       <div class="toolbar">
         <button class="btn" id="export-csv" style="flex:1;">&#128228; Export &amp; Download (Excel)</button>
@@ -389,6 +394,8 @@ const VISION_KEY='pnshar_vision_key';
 const ANTHROPIC_KEY='pnshar_anthropic_key';
 const PROJECT_KEY='pnshar_last_project';
 let imgDataUrl=null, ocrText='';
+let cachedHistoryRecords=[];
+let historyChartInstance=null;
 
 const $=id=>document.getElementById(id);
 const getUrl=()=>localStorage.getItem(URL_KEY)||'';
@@ -458,6 +465,7 @@ function initInstrument(){
     o.value=k;o.textContent=v.label;
     exportSel.appendChild(o);
   });
+  exportSel.onchange=renderChart;
 }
 
 function updateInstrumentMode(){
@@ -1330,8 +1338,12 @@ async function renderHistory(){
   }
 
   if(!records.length){
-    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data.</p></div>';return;
+    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data.</p></div>';
+    cachedHistoryRecords=[];
+    renderChart();
+    return;
   }
+  cachedHistoryRecords=records;
 
   // Group by instrument + no_project + code
   const groups={};
@@ -1406,6 +1418,79 @@ async function renderHistory(){
   });
   html+='</div>';
   area.innerHTML=html;
+  renderChart();
+}
+
+function renderChart(){
+  const selectedInst=$('export-instrument-select').value;
+  const chartSection=$('chart-section');
+  const canvas=$('history-chart');
+
+  if(historyChartInstance){
+    historyChartInstance.destroy();
+    historyChartInstance=null;
+  }
+
+  // Grafik hanya untuk 1 alat spesifik dengan 1 nilai utama (tidak untuk "Semua alat"
+  // atau alat multi-field seperti Tensile, dan tidak untuk BW Coating/Handsheet)
+  const inst=INSTRUMENTS[selectedInst];
+  const noChart=(selectedInst==='ALL')||!inst||!inst.available||
+                (inst.primaryFields||[]).length!==1||
+                selectedInst==='BW_HANDSHEET'||selectedInst==='BW_COATING';
+
+  if(noChart){
+    chartSection.style.display='none';
+    return;
+  }
+
+  const primaryField=inst.primaryFields[0];
+  const filtered=cachedHistoryRecords.filter(r=>r.instrument===selectedInst);
+  if(!filtered.length){
+    chartSection.style.display='none';
+    return;
+  }
+
+  // Group by No.Project + Code, hitung rata-rata (logic sama seperti buildPivotSheetData)
+  const byGroup={};
+  filtered.forEach(r=>{
+    const proj=r.no_project||'-';
+    const c=r.code!=null?r.code:'?';
+    const gkey=proj+'||'+c;
+    if(!byGroup[gkey])byGroup[gkey]={project:proj,code:c,values:[]};
+    if(r.nilai&&r.nilai[primaryField.key]!=null)byGroup[gkey].values.push(r.nilai[primaryField.key]);
+  });
+
+  const groupKeys=Object.keys(byGroup).sort((a,b)=>{
+    const ga=byGroup[a],gb=byGroup[b];
+    if(ga.project!==gb.project)return String(ga.project).localeCompare(String(gb.project));
+    return parseFloat(ga.code)-parseFloat(gb.code);
+  });
+
+  const labels=groupKeys.map(k=>byGroup[k].project+' - Code '+byGroup[k].code);
+  const data=groupKeys.map(k=>{
+    const vals=byGroup[k].values;
+    return vals.length?Math.round((vals.reduce((a,b)=>a+b,0)/vals.length)*100)/100:0;
+  });
+
+  chartSection.style.display='block';
+  $('chart-title').textContent=inst.label+' \u2014 '+primaryField.key+' rata-rata per Code ('+primaryField.unit+')';
+
+  historyChartInstance=new Chart(canvas.getContext('2d'), {
+    type:'bar',
+    data:{
+      labels:labels,
+      datasets:[{
+        label:primaryField.key+' ('+primaryField.unit+')',
+        data:data,
+        backgroundColor:'#14459e'
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{ legend:{ display:false } },
+      scales:{ y:{ beginAtZero:true } }
+    }
+  });
 }
 
 async function delRecord(id,instrument){
