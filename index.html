@@ -1481,6 +1481,72 @@ function buildFlatSheetData(instKey, records, allFieldKeys){
   return [header,...rows];
 }
 
+function buildBWCoatingSheetData(records){
+  const filtered=records.filter(r=>r.instrument==='BW_COATING');
+  if(!filtered.length)return null;
+
+  const lettersUsed=new Set();
+  filtered.forEach(r=>{if(r.sample)lettersUsed.add(r.sample);});
+  const letters='ABCDE'.split('').filter(l=>lettersUsed.has(l));
+  if(letters.length===0)letters.push('A');
+  const lettersLower=letters.map(l=>l.toLowerCase());
+
+  const byGroup={};
+  filtered.forEach(r=>{
+    const proj=r.no_project||'-';
+    const c=r.code!=null?r.code:'?';
+    const gkey=proj+'||'+c;
+    if(!byGroup[gkey])byGroup[gkey]={project:proj,code:c,tanggal:r.tanggal,operator:r.operator,before:{},after:{}};
+    byGroup[gkey].before[r.sample]=r.nilai&&r.nilai.BW_Before!=null?r.nilai.BW_Before:null;
+    byGroup[gkey].after[r.sample]=r.nilai&&r.nilai.BW_After!=null?r.nilai.BW_After:null;
+  });
+
+  const groupKeys=Object.keys(byGroup).sort((a,b)=>{
+    const ga=byGroup[a],gb=byGroup[b];
+    if(ga.project!==gb.project)return String(ga.project).localeCompare(String(gb.project));
+    return parseFloat(ga.code)-parseFloat(gb.code);
+  });
+
+  const beforeCols=letters.length+1; // +Avg
+  const afterCols=letters.length+1;  // +Avg
+
+  const row1=['No. Project','Tanggal','Operator','Code'];
+  for(let i=0;i<beforeCols;i++)row1.push(i===0?'Before Coating':'');
+  for(let i=0;i<afterCols;i++)row1.push(i===0?'After Coating':'');
+  row1.push('Coated Weight');
+
+  const row2=['','','','',...lettersLower,'Avg',...lettersLower,'Avg',''];
+
+  const rows=groupKeys.map(gkey=>{
+    const g=byGroup[gkey];
+    const beforeVals=letters.map(l=>g.before[l]!=null?g.before[l]:'');
+    const afterVals=letters.map(l=>g.after[l]!=null?g.after[l]:'');
+    const beforeNum=beforeVals.filter(v=>v!=='').map(v=>parseFloat(v));
+    const afterNum=afterVals.filter(v=>v!=='').map(v=>parseFloat(v));
+    const beforeAvg=beforeNum.length?beforeNum.reduce((a,b)=>a+b,0)/beforeNum.length:'';
+    const afterAvg=afterNum.length?afterNum.reduce((a,b)=>a+b,0)/afterNum.length:'';
+    const coatedWeight=(beforeAvg!==''&&afterAvg!=='')?Math.round((afterAvg-beforeAvg)*100)/100:'';
+    return [
+      g.project, g.tanggal||'', g.operator||'', parseFloat(g.code),
+      ...beforeVals, beforeAvg!==''?Math.round(beforeAvg*100)/100:'',
+      ...afterVals, afterAvg!==''?Math.round(afterAvg*100)/100:'',
+      coatedWeight
+    ];
+  });
+
+  const aoa=[row1,row2,...rows];
+
+  const merges=[];
+  for(let c=0;c<4;c++)merges.push({s:{r:0,c:c},e:{r:1,c:c}}); // No.Project, Tanggal, Operator, Code
+  merges.push({s:{r:0,c:4},e:{r:0,c:4+beforeCols-1}}); // Before Coating header
+  const afterStart=4+beforeCols;
+  merges.push({s:{r:0,c:afterStart},e:{r:0,c:afterStart+afterCols-1}}); // After Coating header
+  const coatedCol=afterStart+afterCols;
+  merges.push({s:{r:0,c:coatedCol},e:{r:1,c:coatedCol}}); // Coated Weight
+
+  return {aoa, merges};
+}
+
 function buildWorkbook(records, filterInstrument){
   const wb=XLSX.utils.book_new();
   let anySheet=false;
@@ -1490,6 +1556,17 @@ function buildWorkbook(records, filterInstrument){
     if(filterInstrument && filterInstrument!=='ALL' && instKey!==filterInstrument)continue;
     const hasData=records.some(r=>r.instrument===instKey);
     if(!hasData)continue;
+
+    if(instKey==='BW_COATING'){
+      const result=buildBWCoatingSheetData(records);
+      if(result){
+        const ws=XLSX.utils.aoa_to_sheet(result.aoa);
+        ws['!merges']=result.merges;
+        XLSX.utils.book_append_sheet(wb,ws,instKey.substring(0,31));
+        anySheet=true;
+      }
+      continue;
+    }
 
     const primaryFields=inst.primaryFields||[];
     let sheetData=null;
