@@ -259,13 +259,23 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
   <section class="panel" data-panel="settings">
     <div class="card">
       <h2>Gemini API Key</h2>
-      <p class="help">Paste API key dari Google AI Studio (aistudio.google.com) di sini. Gratis, tidak butuh kartu kredit.</p>
+      <p class="help">Paste API key dari Google AI Studio (aistudio.google.com) di sini. Gratis, tidak butuh kartu kredit. Ini dipakai sebagai OCR utama.</p>
       <input type="password" id="vision-key-input" placeholder="AIzaSy..." style="margin-top:10px;font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);background:var(--raised);color:var(--ink);width:100%;">
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="btn-primary" id="save-vision-btn" style="flex:1;">Simpan API Key</button>
         <button class="btn" id="show-vision-btn" style="width:100px;">Tampilkan</button>
       </div>
       <p class="help" id="vision-msg" style="margin-top:8px;"></p>
+    </div>
+    <div class="card">
+      <h2>Anthropic API Key <span style="font-weight:400;color:var(--ink-f);font-size:12px;">(cadangan)</span></h2>
+      <p class="help">Paste API key dari console.anthropic.com di sini. Dipakai otomatis sebagai cadangan kalau Gemini kena limit/gagal setelah beberapa kali coba.</p>
+      <input type="password" id="anthropic-key-input" placeholder="sk-ant-..." style="margin-top:10px;font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);background:var(--raised);color:var(--ink);width:100%;">
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn-primary" id="save-anthropic-btn" style="flex:1;">Simpan API Key</button>
+        <button class="btn" id="show-anthropic-btn" style="width:100px;">Tampilkan</button>
+      </div>
+      <p class="help" id="anthropic-msg" style="margin-top:8px;"></p>
     </div>
     <div class="card">
       <h2>Koneksi Google Sheets</h2>
@@ -376,6 +386,7 @@ const INSTRUMENTS = {
 const LOCAL_KEY='pnshar_records_v5';
 const URL_KEY='pnshar_script_url';
 const VISION_KEY='pnshar_vision_key';
+const ANTHROPIC_KEY='pnshar_anthropic_key';
 const PROJECT_KEY='pnshar_last_project';
 let imgDataUrl=null, ocrText='';
 
@@ -384,6 +395,8 @@ const getUrl=()=>localStorage.getItem(URL_KEY)||'';
 const setUrl=v=>localStorage.setItem(URL_KEY,v);
 const getVisionKey=()=>localStorage.getItem(VISION_KEY)||'';
 const setVisionKey=v=>localStorage.setItem(VISION_KEY,v);
+const getAnthropicKey=()=>localStorage.getItem(ANTHROPIC_KEY)||'';
+const setAnthropicKey=v=>localStorage.setItem(ANTHROPIC_KEY,v);
 const getLastProject=()=>localStorage.getItem(PROJECT_KEY)||'';
 const setLastProject=v=>localStorage.setItem(PROJECT_KEY,v);
 const DIM_KEY='pnshar_last_dimension';
@@ -417,6 +430,12 @@ function switchTab(id){
       $('vision-key-input').value=savedKey;
       $('vision-msg').textContent='API key sudah tersimpan.';
       $('vision-msg').style.color='var(--moss)';
+    }
+    const savedAnthropicKey=getAnthropicKey();
+    if(savedAnthropicKey){
+      $('anthropic-key-input').value=savedAnthropicKey;
+      $('anthropic-msg').textContent='API key sudah tersimpan.';
+      $('anthropic-msg').style.color='var(--moss)';
     }
   }
 }
@@ -552,7 +571,14 @@ async function callGeminiOCR(visionKey, base64Image, mimeType, prompt, onStatus)
     );
 
     if(response.ok){
-      return await response.json();
+      const raw=await response.json();
+      const candidate=raw?.candidates?.[0];
+      const rawText=candidate?.content?.parts?.[0]?.text||'';
+      if(!rawText){
+        const finishReason=candidate?.finishReason||'UNKNOWN';
+        throw new Error('Respons kosong dari Gemini (finishReason: '+finishReason+').');
+      }
+      return {rawText, raw, provider:'gemini'};
     }
 
     const errData=await response.json().catch(()=>({}));
@@ -569,15 +595,77 @@ async function callGeminiOCR(visionKey, base64Image, mimeType, prompt, onStatus)
   }
 }
 
+async function callClaudeOCR(apiKey, base64Image, mimeType, prompt){
+  const response=await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key':apiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({
+      model:'claude-sonnet-4-6',
+      max_tokens:1024,
+      messages:[{
+        role:'user',
+        content:[
+          {type:'image', source:{type:'base64', media_type:mimeType, data:base64Image}},
+          {type:'text', text:prompt}
+        ]
+      }]
+    })
+  });
+
+  if(!response.ok){
+    const errData=await response.json().catch(()=>({}));
+    const errMsg=(errData.error&&errData.error.message)||'HTTP '+response.status;
+    throw new Error(errMsg);
+  }
+
+  const raw=await response.json();
+  const textBlock=(raw.content||[]).find(b=>b.type==='text');
+  const rawText=textBlock?textBlock.text:'';
+  if(!rawText){
+    throw new Error('Respons kosong dari Claude.');
+  }
+  return {rawText, raw, provider:'claude'};
+}
+
+// Wrapper terpadu: coba Gemini dulu (dengan retry bawaan), kalau tetap
+// gagal (misal kena limit terus) dan Anthropic key tersedia, otomatis
+// fallback ke Claude tanpa perlu operator retry manual.
+async function callOCR(base64Image, mimeType, prompt, onStatus){
+  const visionKey=getVisionKey();
+  const anthropicKey=getAnthropicKey();
+
+  if(!visionKey && !anthropicKey){
+    throw new Error('__NO_API_KEY__');
+  }
+
+  if(visionKey){
+    try{
+      return await callGeminiOCR(visionKey, base64Image, mimeType, prompt, onStatus);
+    }catch(err){
+      if(!anthropicKey)throw err;
+      if(onStatus)onStatus('Gemini gagal, mencoba dengan Claude (cadangan)...');
+      return await callClaudeOCR(anthropicKey, base64Image, mimeType, prompt);
+    }
+  }
+
+  // Tidak ada Gemini key, langsung pakai Claude
+  if(onStatus)onStatus('Membaca dengan Claude...');
+  return await callClaudeOCR(anthropicKey, base64Image, mimeType, prompt);
+}
+
 async function readReceiptMultiSample(inst){
   const sl=$('status-line'),st=$('status-text'),eb=$('err-box'),rb=$('read-btn');
   const pb=$('progress-bar'),pf=$('progress-fill');
   sl.classList.add('show');pb.style.display='block';
   eb.classList.remove('show');rb.disabled=true;
 
-  const visionKey=getVisionKey();
-  if(!visionKey){
-    eb.textContent='Gemini API Key belum diisi. Buka tab Pengaturan dan masukkan API key Anda.';
+  if(!getVisionKey() && !getAnthropicKey()){
+    eb.textContent='API Key belum diisi. Buka tab Pengaturan dan masukkan Gemini atau Anthropic API key.';
     eb.classList.add('show');
     sl.classList.remove('show');pb.style.display='none';rb.disabled=false;
     return;
@@ -586,7 +674,7 @@ async function readReceiptMultiSample(inst){
   const metaFields=inst.metaFields||[];
 
   try{
-    st.textContent='Mengirim foto ke Gemini...';
+    st.textContent='Mengirim foto...';
     pf.style.width='20%';
 
     const base64Image=imgDataUrl.split(',')[1];
@@ -604,19 +692,13 @@ async function readReceiptMultiSample(inst){
 
     pf.style.width='40%';
 
-    const data=await callGeminiOCR(visionKey, base64Image, mimeType, prompt, (msg)=>{st.textContent=msg;});
+    const result=await callOCR(base64Image, mimeType, prompt, (msg)=>{st.textContent=msg;});
 
     pf.style.width='90%';
 
-    const candidate=data?.candidates?.[0];
-    const rawText=candidate?.content?.parts?.[0]?.text||'';
-    ocrText=rawText||'(kosong \u2014 lihat detail di bawah)';
-    $('ocr-raw').textContent=JSON.stringify(data,null,2);
-
-    if(!rawText){
-      const finishReason=candidate?.finishReason||'UNKNOWN';
-      throw new Error('Respons kosong dari Gemini (finishReason: '+finishReason+'). Coba foto ulang dengan pencahayaan lebih baik.');
-    }
+    const rawText=result.rawText;
+    ocrText=rawText;
+    $('ocr-raw').textContent=JSON.stringify(result.raw,null,2);
 
     const clean=rawText.replace(/```json|```/g,'').trim();
     const json=JSON.parse(clean);
@@ -636,7 +718,9 @@ async function readReceiptMultiSample(inst){
 
   }catch(err){
     let msg=err.message;
-    if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')){
+    if(msg==='__NO_API_KEY__'){
+      msg='API Key belum diisi. Buka tab Pengaturan.';
+    } else if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')||msg.includes('authentication_error')){
       msg='API Key tidak valid. Cek kembali key di tab Pengaturan.';
     } else if(msg.includes('Failed to fetch')||msg.includes('NetworkError')){
       msg='Tidak ada koneksi internet. Pastikan terhubung ke WiFi/data.';
@@ -657,9 +741,8 @@ async function readReceiptAvgReadings(inst){
   sl.classList.add('show');pb.style.display='block';
   eb.classList.remove('show');rb.disabled=true;
 
-  const visionKey=getVisionKey();
-  if(!visionKey){
-    eb.textContent='Gemini API Key belum diisi. Buka tab Pengaturan dan masukkan API key Anda.';
+  if(!getVisionKey() && !getAnthropicKey()){
+    eb.textContent='API Key belum diisi. Buka tab Pengaturan dan masukkan Gemini atau Anthropic API key.';
     eb.classList.add('show');
     sl.classList.remove('show');pb.style.display='none';rb.disabled=false;
     return;
@@ -668,7 +751,7 @@ async function readReceiptAvgReadings(inst){
   const count=inst.readingsCount||5;
 
   try{
-    st.textContent='Mengirim foto ke Gemini...';
+    st.textContent='Mengirim foto...';
     pf.style.width='20%';
 
     const base64Image=imgDataUrl.split(',')[1];
@@ -683,19 +766,13 @@ async function readReceiptAvgReadings(inst){
 
     pf.style.width='40%';
 
-    const data=await callGeminiOCR(visionKey, base64Image, mimeType, prompt, (msg)=>{st.textContent=msg;});
+    const result=await callOCR(base64Image, mimeType, prompt, (msg)=>{st.textContent=msg;});
 
     pf.style.width='90%';
 
-    const candidate=data?.candidates?.[0];
-    const rawText=candidate?.content?.parts?.[0]?.text||'';
-    ocrText=rawText||'(kosong \u2014 lihat detail di bawah)';
-    $('ocr-raw').textContent=JSON.stringify(data,null,2);
-
-    if(!rawText){
-      const finishReason=candidate?.finishReason||'UNKNOWN';
-      throw new Error('Respons kosong dari Gemini (finishReason: '+finishReason+'). Coba foto ulang dengan pencahayaan lebih baik.');
-    }
+    const rawText=result.rawText;
+    ocrText=rawText;
+    $('ocr-raw').textContent=JSON.stringify(result.raw,null,2);
 
     const clean=rawText.replace(/```json|```/g,'').trim();
     const json=JSON.parse(clean);
@@ -710,7 +787,9 @@ async function readReceiptAvgReadings(inst){
 
   }catch(err){
     let msg=err.message;
-    if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')){
+    if(msg==='__NO_API_KEY__'){
+      msg='API Key belum diisi. Buka tab Pengaturan.';
+    } else if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')||msg.includes('authentication_error')){
       msg='API Key tidak valid. Cek kembali key di tab Pengaturan.';
     } else if(msg.includes('Failed to fetch')||msg.includes('NetworkError')){
       msg='Tidak ada koneksi internet. Pastikan terhubung ke WiFi/data.';
@@ -742,9 +821,8 @@ async function readReceipt(){
   sl.classList.add('show');pb.style.display='block';
   eb.classList.remove('show');rb.disabled=true;
 
-  const visionKey=getVisionKey();
-  if(!visionKey){
-    eb.textContent='Gemini API Key belum diisi. Buka tab Pengaturan dan masukkan API key Anda.';
+  if(!getVisionKey() && !getAnthropicKey()){
+    eb.textContent='API Key belum diisi. Buka tab Pengaturan dan masukkan Gemini atau Anthropic API key.';
     eb.classList.add('show');
     sl.classList.remove('show');pb.style.display='none';rb.disabled=false;
     return;
@@ -757,7 +835,7 @@ async function readReceipt(){
   const allKeys=[...primaryKeys,...refKeys];
 
   try{
-    st.textContent='Mengirim foto ke Gemini...';
+    st.textContent='Mengirim foto...';
     pf.style.width='20%';
 
     // Convert image to base64
@@ -778,21 +856,15 @@ async function readReceipt(){
 
     pf.style.width='40%';
 
-    const data=await callGeminiOCR(visionKey, base64Image, mimeType, prompt, (msg)=>{st.textContent=msg;});
+    const result=await callOCR(base64Image, mimeType, prompt, (msg)=>{st.textContent=msg;});
 
     pf.style.width='90%';
 
-    const candidate=data?.candidates?.[0];
-    const rawText=candidate?.content?.parts?.[0]?.text||'';
-    ocrText=rawText||'(kosong — lihat detail di bawah)';
-    $('ocr-raw').textContent=JSON.stringify(data,null,2);
+    const rawText=result.rawText;
+    ocrText=rawText;
+    $('ocr-raw').textContent=JSON.stringify(result.raw,null,2);
 
-    if(!rawText){
-      const finishReason=candidate?.finishReason||'UNKNOWN';
-      throw new Error('Respons kosong dari Gemini (finishReason: '+finishReason+'). Coba foto ulang dengan pencahayaan lebih baik.');
-    }
-
-    // Parse JSON dari response Gemini
+    // Parse JSON dari response
     let parsed={nilai:{},confidence:{},meta:{}};
     try{
       const clean=rawText.replace(/```json|```/g,'').trim();
@@ -819,7 +891,9 @@ async function readReceipt(){
   }catch(err){
     let msg=err.message;
     // Tampilkan pesan asli dari API supaya lebih mudah didiagnosis
-    if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')){
+    if(msg==='__NO_API_KEY__'){
+      msg='API Key belum diisi. Buka tab Pengaturan.';
+    } else if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')||msg.includes('authentication_error')){
       msg='API Key tidak valid. Cek kembali key di tab Pengaturan.';
     } else if(msg.includes('Failed to fetch')||msg.includes('NetworkError')){
       msg='Tidak ada koneksi internet. Pastikan terhubung ke WiFi/data.';
@@ -1474,6 +1548,20 @@ $('show-vision-btn').onclick=()=>{
   const inp=$('vision-key-input');
   if(inp.type==='password'){inp.type='text';$('show-vision-btn').textContent='Sembunyikan';}
   else{inp.type='password';$('show-vision-btn').textContent='Tampilkan';}
+};
+$('save-anthropic-btn').onclick=()=>{
+  const v=$('anthropic-key-input').value.trim();
+  if(!v){$('anthropic-msg').textContent='API key tidak boleh kosong.';return;}
+  if(!v.startsWith('sk-ant-')){$('anthropic-msg').textContent='Format key tidak valid. Harus diawali dengan sk-ant-...';return;}
+  setAnthropicKey(v);
+  $('anthropic-msg').textContent='API key tersimpan. Akan dipakai otomatis kalau Gemini gagal/limit.';
+  $('anthropic-msg').style.color='var(--moss)';
+  toast('API key Anthropic tersimpan \u2713');
+};
+$('show-anthropic-btn').onclick=()=>{
+  const inp=$('anthropic-key-input');
+  if(inp.type==='password'){inp.type='text';$('show-anthropic-btn').textContent='Sembunyikan';}
+  else{inp.type='password';$('show-anthropic-btn').textContent='Tampilkan';}
 };
 $('save-url-btn').onclick=()=>{
   const v=$('script-url').value.trim();setUrl(v);
