@@ -242,7 +242,15 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
         </div>
       </div>
       <div class="toolbar">
-        <button class="btn" id="export-csv" style="flex:1;">&#128228; Export &amp; Bagikan (Excel)</button>
+        <button class="btn" id="export-csv" style="flex:1;">&#128228; Export &amp; Download (Excel)</button>
+      </div>
+      <div id="export-hint" style="display:none;background:var(--amber-p);border:1px solid var(--amber);border-radius:8px;padding:12px 14px;margin-top:10px;font-size:13px;color:var(--ink-s);line-height:1.6;">
+        <b>File tersimpan ke Downloads.</b> Untuk share ke WhatsApp/lainnya:
+        <ol style="margin:6px 0 0;padding-left:18px;">
+          <li>Buka notifikasi download (tarik dari atas layar), atau buka app <b>Files/Downloads</b></li>
+          <li>Cari file yang baru saja diunduh (nama diawali <code>pnshar_lab_</code>)</li>
+          <li>Tap ikon <b>titik tiga (⋮)</b> di sebelah nama file &rarr; pilih <b>Share</b></li>
+        </ol>
       </div>
       <div id="history-area"></div>
     </div>
@@ -1426,64 +1434,31 @@ function buildWorkbook(records, filterInstrument){
   return anySheet?wb:null;
 }
 
-let preparedExportFile=null;
-
 async function exportCSV(){
   const btn=$('export-csv');
 
-  // Tap kedua: file sudah siap dari tap pertama -- share LANGSUNG
-  // tanpa await apapun di depan, supaya user-gesture masih dianggap segar.
-  if(preparedExportFile){
-    const file=preparedExportFile;
-    preparedExportFile=null;
-    btn.textContent='\u{1F4E4} Export & Bagikan (Excel)';
-    if(navigator.share){
-      navigator.share({files:[file],title:'APC Lab Data',text:'Data hasil pengujian '+today()})
-        .catch(err=>{
-          if(err.name!=='AbortError'){
-            const a=document.createElement('a');
-            a.href=URL.createObjectURL(file);
-            a.download=file.name;
-            a.click();
-            alert('Gagal share.\nError name: '+err.name+'\nPesan: '+err.message);
-          }
-        });
-    } else {
-      alert('navigator.share tidak tersedia di browser ini');
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(file);
-      a.download=file.name;
-      a.click();
-    }
-    return;
-  }
-
-  // Tap pertama: siapkan file (boleh ada await di sini)
   btn.textContent='Menyiapkan file...';
+  btn.disabled=true;
   const records=await getAllRecordsGrouped();
-  if(!records.length){toast('Belum ada data');btn.textContent='\u{1F4E4} Export & Bagikan (Excel)';return;}
+  if(!records.length){toast('Belum ada data');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
 
   const selectedInst=$('export-instrument-select').value;
   const wb=buildWorkbook(records, selectedInst);
-  if(!wb){toast('Belum ada data untuk alat ini');btn.textContent='\u{1F4E4} Export & Bagikan (Excel)';return;}
+  if(!wb){toast('Belum ada data untuk alat ini');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
 
   const wbArrayBuffer=XLSX.write(wb,{bookType:'xlsx',type:'array'});
   const namePart=selectedInst==='ALL'?'semua_alat':selectedInst.toLowerCase();
   const filename='pnshar_lab_'+namePart+'_'+today()+'.xlsx';
   const blob=new Blob([wbArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const file=new File([blob],filename,{type:blob.type});
 
-  if(navigator.share){
-    preparedExportFile=file;
-    btn.textContent='\u2705 Tap sekali lagi untuk Bagikan';
-    toast('File siap! Tap tombol sekali lagi untuk share ke WA/dll');
-  } else {
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
-    a.download=filename;
-    a.click();
-    btn.textContent='\u{1F4E4} Export & Bagikan (Excel)';
-  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+
+  btn.textContent='\u{1F4E4} Export & Download (Excel)';
+  btn.disabled=false;
+  $('export-hint').style.display='block';
 }
 
 $('save-vision-btn').onclick=()=>{
