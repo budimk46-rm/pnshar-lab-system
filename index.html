@@ -556,7 +556,7 @@ function handleFile(){
 // Helper bersama untuk memanggil Gemini API dengan retry otomatis
 // kalau kena rate limit (quota per menit terlampaui / HTTP 429).
 async function callGeminiOCR(visionKey, base64Image, mimeType, prompt, onStatus){
-  const maxRetries=3;
+  const maxRetries=1;
   const retryDelayMs=6000; // Gemini biasanya minta tunggu beberapa detik saja
 
   for(let attempt=0; attempt<=maxRetries; attempt++){
