@@ -242,9 +242,8 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
           </select>
         </div>
       </div>
-      <div id="chart-section" style="display:none;background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px;">
-        <div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;" id="chart-title">Grafik</div>
-        <canvas id="history-chart" height="180"></canvas>
+      <div id="chart-section" style="display:none;">
+        <div id="chart-container"></div>
       </div>
       <div class="toolbar">
         <button class="btn" id="export-csv" style="flex:1;">&#128228; Export &amp; Download (Excel)</button>
@@ -395,7 +394,7 @@ const ANTHROPIC_KEY='pnshar_anthropic_key';
 const PROJECT_KEY='pnshar_last_project';
 let imgDataUrl=null, ocrText='';
 let cachedHistoryRecords=[];
-let historyChartInstance=null;
+let historyChartInstance=[];
 
 const $=id=>document.getElementById(id);
 const getUrl=()=>localStorage.getItem(URL_KEY)||'';
@@ -1421,66 +1420,35 @@ async function renderHistory(){
   renderChart();
 }
 
-function renderChart(){
-  const selectedInst=$('export-instrument-select').value;
-  const chartSection=$('chart-section');
-  const canvas=$('history-chart');
-
-  if(historyChartInstance){
-    historyChartInstance.destroy();
-    historyChartInstance=null;
-  }
-
-  // Grafik hanya untuk 1 alat spesifik dengan 1 nilai utama (tidak untuk "Semua alat"
-  // atau alat multi-field seperti Tensile, dan tidak untuk BW Coating/Handsheet)
-  const inst=INSTRUMENTS[selectedInst];
-  const noChart=(selectedInst==='ALL')||!inst||!inst.available||
-                (inst.primaryFields||[]).length!==1||
-                selectedInst==='BW_HANDSHEET'||selectedInst==='BW_COATING';
-
-  if(noChart){
-    chartSection.style.display='none';
-    return;
-  }
-
-  const primaryField=inst.primaryFields[0];
-  const filtered=cachedHistoryRecords.filter(r=>r.instrument===selectedInst);
-  if(!filtered.length){
-    chartSection.style.display='none';
-    return;
-  }
-
-  // Group by No.Project + Code, hitung rata-rata (logic sama seperti buildPivotSheetData)
+function computeAvgPerCode(filtered, fieldKey){
   const byGroup={};
   filtered.forEach(r=>{
     const proj=r.no_project||'-';
     const c=r.code!=null?r.code:'?';
     const gkey=proj+'||'+c;
     if(!byGroup[gkey])byGroup[gkey]={project:proj,code:c,values:[]};
-    if(r.nilai&&r.nilai[primaryField.key]!=null)byGroup[gkey].values.push(r.nilai[primaryField.key]);
+    if(r.nilai&&r.nilai[fieldKey]!=null)byGroup[gkey].values.push(r.nilai[fieldKey]);
   });
-
   const groupKeys=Object.keys(byGroup).sort((a,b)=>{
     const ga=byGroup[a],gb=byGroup[b];
     if(ga.project!==gb.project)return String(ga.project).localeCompare(String(gb.project));
     return parseFloat(ga.code)-parseFloat(gb.code);
   });
-
   const labels=groupKeys.map(k=>byGroup[k].project+' - Code '+byGroup[k].code);
   const data=groupKeys.map(k=>{
     const vals=byGroup[k].values;
     return vals.length?Math.round((vals.reduce((a,b)=>a+b,0)/vals.length)*100)/100:0;
   });
+  return {labels, data};
+}
 
-  chartSection.style.display='block';
-  $('chart-title').textContent=inst.label+' \u2014 '+primaryField.key+' rata-rata per Code ('+primaryField.unit+')';
-
-  historyChartInstance=new Chart(canvas.getContext('2d'), {
+function drawBarChart(canvas, labels, data, fieldKey, unit){
+  return new Chart(canvas.getContext('2d'), {
     type:'bar',
     data:{
       labels:labels,
       datasets:[{
-        label:primaryField.key+' ('+primaryField.unit+')',
+        label:fieldKey+' ('+unit+')',
         data:data,
         backgroundColor:'#14459e'
       }]
@@ -1490,6 +1458,51 @@ function renderChart(){
       plugins:{ legend:{ display:false } },
       scales:{ y:{ beginAtZero:true } }
     }
+  });
+}
+
+function renderChart(){
+  const selectedInst=$('export-instrument-select').value;
+  const chartSection=$('chart-section');
+  const container=$('chart-container');
+
+  // Bersihkan instance chart lama supaya tidak bocor memori
+  (historyChartInstance||[]).forEach(c=>c.destroy());
+  historyChartInstance=[];
+  container.innerHTML='';
+
+  const inst=INSTRUMENTS[selectedInst];
+  const excluded=(selectedInst==='BW_HANDSHEET'||selectedInst==='BW_COATING');
+  const noChart=(selectedInst==='ALL')||!inst||!inst.available||excluded;
+
+  if(noChart){
+    chartSection.style.display='none';
+    return;
+  }
+
+  const filtered=cachedHistoryRecords.filter(r=>r.instrument===selectedInst);
+  if(!filtered.length){
+    chartSection.style.display='none';
+    return;
+  }
+
+  const primaryFields=inst.primaryFields||[];
+  chartSection.style.display='block';
+
+  primaryFields.forEach(f=>{
+    const {labels, data}=computeAvgPerCode(filtered, f.key);
+    if(labels.length===0)return;
+
+    const box=document.createElement('div');
+    box.style.cssText='background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px;';
+    box.innerHTML='<div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">'+
+      inst.label+' \u2014 '+f.key+' rata-rata per Code ('+f.unit+')</div>'+
+      '<canvas height="160"></canvas>';
+    container.appendChild(box);
+
+    const canvas=box.querySelector('canvas');
+    const chart=drawBarChart(canvas, labels, data, f.key, f.unit);
+    historyChartInstance.push(chart);
   });
 }
 
