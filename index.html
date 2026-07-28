@@ -536,16 +536,50 @@ function initUpload(){
   zone.ondragleave=()=>zone.classList.remove('drag');
   zone.ondrop=e=>{e.preventDefault();zone.classList.remove('drag');if(e.dataTransfer.files[0]){input.files=e.dataTransfer.files;handleFile();}};
 }
+function compressImage(dataUrl, maxDim, quality){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      let width=img.width, height=img.height;
+      if(width>height && width>maxDim){
+        height=Math.round(height*(maxDim/width));
+        width=maxDim;
+      } else if(height>=width && height>maxDim){
+        width=Math.round(width*(maxDim/height));
+        height=maxDim;
+      }
+      const canvas=document.createElement('canvas');
+      canvas.width=width;
+      canvas.height=height;
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,width,height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror=()=>resolve(dataUrl); // fallback ke original kalau gagal diproses
+    img.src=dataUrl;
+  });
+}
+
 function handleFile(){
   const f=$('file-input').files[0];if(!f)return;
   const reader=new FileReader();
-  reader.onload=e=>{
-    imgDataUrl=e.target.result;
+  reader.onload=async e=>{
+    const rawDataUrl=e.target.result;
     const pa=$('preview-area');pa.innerHTML='';
     const row=document.createElement('div');row.className='preview-row';
-    const img=document.createElement('img');img.src=e.target.result;row.appendChild(img);
-    const p=document.createElement('p');p.style.cssText='font-size:13px;color:var(--ink-s)';p.textContent=f.name;row.appendChild(p);
+    const p=document.createElement('p');p.style.cssText='font-size:13px;color:var(--ink-s)';p.textContent='Memproses foto...';row.appendChild(p);
     pa.appendChild(row);
+    $('read-btn').disabled=true;
+
+    // Kompresi: perkecil dimensi maksimal 1568px sisi terpanjang, kualitas JPEG 85%
+    // -- mempercepat upload terutama untuk foto resolusi tinggi dari iPhone
+    imgDataUrl=await compressImage(rawDataUrl, 1568, 0.85);
+
+    pa.innerHTML='';
+    const row2=document.createElement('div');row2.className='preview-row';
+    const img=document.createElement('img');img.src=imgDataUrl;row2.appendChild(img);
+    const p2=document.createElement('p');p2.style.cssText='font-size:13px;color:var(--ink-s)';p2.textContent=f.name;row2.appendChild(p2);
+    pa.appendChild(row2);
     $('read-btn').disabled=false;
     $('err-box').classList.remove('show');
     $('result-card').style.display='none';
