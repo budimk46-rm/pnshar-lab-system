@@ -307,15 +307,50 @@ const INSTRUMENTS = {
     label:'RCT \u2014 Ring Crush Tester',
     primaryFields:[{key:'F',unit:'N'}],
     refFields:[{key:'R',unit:'kN/m'},{key:'Rd',unit:'N.m/g'}],
+    indexConfig:{
+      sourceField:'F',
+      formula:(raw,bwAfter)=>((raw/152)/bwAfter)*1000,
+      unit:'N.m/g',
+      label:'RCT Index'
+    },
     available:true, sheet:'records_rct'
   },
   CMT:{label:'CMT \u2014 Concora Medium Test',primaryFields:[{key:'F',unit:'N'}],refFields:[],available:true,sheet:'records_cmt'},
-  TENSILE:{label:'Tensile Tester',primaryFields:[{key:'F',unit:'N'},{key:'S',unit:'kN/m'},{key:'I',unit:'N.m/g'},{key:'Z',unit:'J/m2'},{key:'Iz',unit:'mJ/g'},{key:'R',unit:'%'},{key:'Ls',unit:'km'},{key:'t',unit:'s'}],refFields:[],available:true,sheet:'records_tensile'},
+  TENSILE:{
+    label:'Tensile Tester',
+    primaryFields:[{key:'F',unit:'N'},{key:'S',unit:'kN/m'},{key:'I',unit:'N.m/g'},{key:'Z',unit:'J/m2'},{key:'Iz',unit:'mJ/g'},{key:'R',unit:'%'},{key:'Ls',unit:'km'},{key:'t',unit:'s'}],
+    refFields:[],
+    indexConfig:{
+      sourceField:'F',
+      formula:(raw,bwAfter)=>((raw/15)/bwAfter)*1000,
+      unit:'N.m/g',
+      label:'Tensile Index'
+    },
+    available:true, sheet:'records_tensile'
+  },
+  WET_TENSILE:{
+    label:'Wet Tensile Tester',
+    primaryFields:[{key:'F',unit:'N'},{key:'S',unit:'kN/m'},{key:'I',unit:'N.m/g'},{key:'Z',unit:'J/m2'},{key:'Iz',unit:'mJ/g'},{key:'R',unit:'%'},{key:'Ls',unit:'km'},{key:'t',unit:'s'}],
+    refFields:[],
+    indexConfig:{
+      sourceField:'F',
+      formula:(raw,bwAfter)=>((raw/15)/bwAfter)*1000,
+      unit:'N.m/g',
+      label:'Wet Tensile Index'
+    },
+    available:true, sheet:'records_wet_tensile'
+  },
   TEAR:{
-    label:'Tearing Tester (PNSHAR)',
+    label:'Tearing Tester',
     multiSample:true,
     primaryFields:[{key:'Tear',unit:'mN'}],
     refFields:[],
+    indexConfig:{
+      sourceField:'Tear',
+      formula:(raw,bwAfter)=>raw/bwAfter,
+      unit:'mN.m\u00b2/g',
+      label:'Tearing Index'
+    },
     metaFields:[
       {key:'sample_name',label:'Sample',type:'text',ocr:'Sample'},
       {key:'test_mode',label:'Mode',type:'text',ocr:'Mode'},
@@ -351,6 +386,12 @@ const INSTRUMENTS = {
     manualFormula:(v)=>Math.round(((v.top+v.bottom)/2)*100)/100,
     manualResultLabel:'Nilai Bursting',
     manualFormulaNote:'(Top + Bottom) \u00f7 2',
+    indexConfig:{
+      sourceField:'Bursting',
+      formula:(raw,bwAfter)=>((raw/9.807)/bwAfter)*1000,
+      unit:'kPa.m\u00b2/g',
+      label:'Bursting Index'
+    },
     available:true, sheet:'records_bursting'
   },
   IB:{
@@ -908,7 +949,7 @@ async function readReceipt(){
 
     // Buat prompt yang spesifik per instrumen
     const fieldList=allKeys.map(k=>`"${k}": angka`).join(', ');
-    const prompt=`Ini adalah foto layar monitor alat uji kertas ${instKey}. `+
+    const prompt=`Ini adalah foto layar monitor alat uji kertas ${inst.label}. `+
       `Layar biasanya menampilkan format seperti:\n`+
       `${allKeys.map(k=>k+'= [angka]').join('\\n')}\n`+
       `Setiap baris punya format "KODE = ANGKA" diikuti satuan (N, kN/m, N.m/g, dst — abaikan satuannya).\n`+
@@ -1493,14 +1534,35 @@ async function renderHistory(skipFetch){
   renderChart();
 }
 
-function computeAvgPerCode(filtered, fieldKey){
+// Bangun lookup BW_After per kombinasi No.Project+Code+Sample, dipakai
+// untuk menghitung nilai Index (RCT/Bursting/Tearing/Tensile/Wet Tensile)
+function getBWAfterLookup(){
+  const lookup={};
+  cachedHistoryRecords.filter(r=>r.instrument==='BW_COATING').forEach(r=>{
+    const key=(r.no_project||'-')+'||'+(r.code!=null?r.code:'?')+'||'+(r.sample||'?');
+    if(r.nilai && r.nilai.BW_After!=null){
+      lookup[key]=r.nilai.BW_After;
+    }
+  });
+  return lookup;
+}
+
+function computeIndexPerCode(filtered, indexConfig){
+  const bwLookup=getBWAfterLookup();
   const byGroup={};
+  let anyMatched=false;
   filtered.forEach(r=>{
     const proj=r.no_project||'-';
     const c=r.code!=null?r.code:'?';
+    const bwKey=proj+'||'+c+'||'+(r.sample||'?');
+    const bwAfter=bwLookup[bwKey];
+    const rawVal=r.nilai&&r.nilai[indexConfig.sourceField]!=null?r.nilai[indexConfig.sourceField]:null;
+    if(bwAfter==null||rawVal==null||bwAfter===0)return; // sample tanpa pasangan data BW dilewati
+    anyMatched=true;
+    const indexVal=indexConfig.formula(rawVal, bwAfter);
     const gkey=proj+'||'+c;
     if(!byGroup[gkey])byGroup[gkey]={project:proj,code:c,values:[]};
-    if(r.nilai&&r.nilai[fieldKey]!=null)byGroup[gkey].values.push(r.nilai[fieldKey]);
+    byGroup[gkey].values.push(indexVal);
   });
   const groupKeys=Object.keys(byGroup).sort((a,b)=>{
     const ga=byGroup[a],gb=byGroup[b];
@@ -1510,18 +1572,18 @@ function computeAvgPerCode(filtered, fieldKey){
   const labels=groupKeys.map(k=>byGroup[k].project+' - Code '+byGroup[k].code);
   const data=groupKeys.map(k=>{
     const vals=byGroup[k].values;
-    return vals.length?Math.round((vals.reduce((a,b)=>a+b,0)/vals.length)*100)/100:0;
+    return vals.length?Math.round((vals.reduce((a,b)=>a+b,0)/vals.length)*1000)/1000:0;
   });
-  return {labels, data};
+  return {labels, data, anyMatched};
 }
 
-function drawBarChart(canvas, labels, data, fieldKey, unit){
+function drawBarChart(canvas, labels, data, label, unit){
   return new Chart(canvas.getContext('2d'), {
     type:'bar',
     data:{
       labels:labels,
       datasets:[{
-        label:fieldKey+' ('+unit+')',
+        label:label+' ('+unit+')',
         data:data,
         backgroundColor:'#14459e'
       }]
@@ -1545,8 +1607,10 @@ function renderChart(){
   container.innerHTML='';
 
   const inst=INSTRUMENTS[selectedInst];
-  const excluded=(selectedInst==='BW_HANDSHEET'||selectedInst==='BW_COATING');
-  const noChart=(selectedInst==='ALL')||!inst||!inst.available||excluded;
+  // Grafik Index HANYA untuk alat yang punya indexConfig
+  // (RCT, Bursting, Tearing, Tensile, Wet Tensile). Alat lain tidak
+  // ditampilkan grafiknya sama sekali, datanya tetap tersimpan seperti biasa.
+  const noChart=(selectedInst==='ALL')||!inst||!inst.available||!inst.indexConfig;
 
   if(noChart){
     chartSection.style.display='none';
@@ -1559,24 +1623,28 @@ function renderChart(){
     return;
   }
 
-  const primaryFields=inst.primaryFields||[];
+  const cfg=inst.indexConfig;
+  const {labels, data, anyMatched}=computeIndexPerCode(filtered, cfg);
+
   chartSection.style.display='block';
 
-  primaryFields.forEach(f=>{
-    const {labels, data}=computeAvgPerCode(filtered, f.key);
-    if(labels.length===0)return;
+  if(!anyMatched){
+    container.innerHTML='<div style="background:var(--amber-p);border:1px solid var(--amber);border-radius:var(--r);padding:14px;font-size:13px;color:var(--ink-s);">'+
+      'Belum ada data Basis Weight \u2014 Coating yang cocok (No.Project + Code + Sample sama) untuk menghitung '+cfg.label+'. '+
+      'Pastikan data BW Coating untuk sample yang sama sudah diinput.</div>';
+    return;
+  }
 
-    const box=document.createElement('div');
-    box.style.cssText='background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px;';
-    box.innerHTML='<div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">'+
-      inst.label+' \u2014 '+f.key+' rata-rata per Code ('+f.unit+')</div>'+
-      '<canvas height="160"></canvas>';
-    container.appendChild(box);
+  const box=document.createElement('div');
+  box.style.cssText='background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px;';
+  box.innerHTML='<div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">'+
+    inst.label+' \u2014 '+cfg.label+' rata-rata per Code ('+cfg.unit+')</div>'+
+    '<canvas height="160"></canvas>';
+  container.appendChild(box);
 
-    const canvas=box.querySelector('canvas');
-    const chart=drawBarChart(canvas, labels, data, f.key, f.unit);
-    historyChartInstance.push(chart);
-  });
+  const canvas=box.querySelector('canvas');
+  const chart=drawBarChart(canvas, labels, data, cfg.label, cfg.unit);
+  historyChartInstance.push(chart);
 }
 
 async function delRecord(id,instrument){
