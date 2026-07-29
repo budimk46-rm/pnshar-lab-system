@@ -6,6 +6,7 @@
 <title>APC Lab System</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#2a3f30">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="APC Lab">
@@ -463,7 +464,14 @@ let hasExportedThisSession=false;
 
 const $=id=>document.getElementById(id);
 const getSupabaseUrl=()=>localStorage.getItem(SUPABASE_URL_KEY)||'';
-const setSupabaseUrl=v=>localStorage.setItem(SUPABASE_URL_KEY,v);
+const setSupabaseUrl=v=>{
+  // Bersihkan URL: hapus trailing slash dan /rest/v1 kalau tidak sengaja ikut
+  // ter-paste (supaya tidak jadi dobel saat aplikasi menambahkan /rest/v1/records)
+  let clean=v.trim();
+  clean=clean.replace(/\/rest\/v1\/?.*$/i,''); // buang /rest/v1 dan apapun setelahnya
+  clean=clean.replace(/\/+$/,''); // buang trailing slash
+  localStorage.setItem(SUPABASE_URL_KEY,clean);
+};
 const getSupabaseKey=()=>localStorage.getItem(SUPABASE_ANON_KEY)||'';
 const setSupabaseKey=v=>localStorage.setItem(SUPABASE_ANON_KEY,v);
 const getVisionKey=()=>localStorage.getItem(VISION_KEY)||'';
