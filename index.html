@@ -84,6 +84,31 @@ button.btn-primary:hover:not(:disabled){background:#c97d10;}
 button.btn{font-family:var(--sans);font-size:13px;padding:9px 13px;border-radius:8px;border:1px solid var(--line-s);background:var(--raised);color:var(--ink);cursor:pointer;}
 button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .history-list{display:flex;flex-direction:column;gap:12px;}
+.project-block{border:1px solid var(--line-s);border-radius:var(--r);margin-bottom:18px;overflow:hidden;background:var(--raised);}
+.project-header{background:var(--brand-blue);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.project-title{font-family:var(--mono);font-weight:700;font-size:14px;flex:1;min-width:140px;}
+.project-actions{display:flex;gap:6px;}
+.project-actions button{font-family:var(--sans);font-size:11px;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.1);color:#fff;cursor:pointer;white-space:nowrap;}
+.project-actions button:hover{background:rgba(255,255,255,.22);}
+.project-chart-area{padding:12px 14px;border-bottom:1px solid var(--line);background:var(--paper);}
+.chart-box{background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px;}
+.chart-box:last-child{margin-bottom:0;}
+.chart-box-title{font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;}
+.chart-warning{background:var(--amber-p);border:1px solid var(--amber);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--ink-s);}
+.project-instruments{padding:10px 14px 14px;}
+.instrument-subsection{margin-bottom:14px;}
+.instrument-subsection:last-child{margin-bottom:0;}
+.instrument-subheader{font-size:12px;font-weight:700;color:var(--ink);background:var(--moss-p);display:inline-block;padding:4px 10px;border-radius:6px;margin-bottom:8px;}
+.empty-instrument-note{font-size:12px;color:var(--ink-f);font-style:italic;padding:6px 2px;}
+.row-edit{background:none;border:none;cursor:pointer;color:var(--ink-f);font-size:13px;padding:4px 6px;}
+.row-edit:hover{color:var(--brand-blue);}
+.hv-edit{display:flex;flex-direction:column;gap:2px;background:var(--moss-p);border-radius:6px;padding:6px;text-align:center;}
+.hv-edit label{font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--ink);opacity:.7;}
+.hv-edit input{width:100%;font-size:13px;padding:4px;border-radius:4px;border:1px solid var(--line-s);text-align:center;}
+.edit-actions{grid-column:1/-1;display:flex;gap:8px;margin-top:8px;}
+.btn-save-edit,.btn-cancel-edit{flex:1;font-size:12px;padding:8px;border-radius:6px;border:none;cursor:pointer;font-weight:600;}
+.btn-save-edit{background:var(--moss);color:#fff;}
+.btn-cancel-edit{background:var(--line);color:var(--ink);}
 .code-group{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;}
 .code-group-header{background:var(--brand-blue);color:var(--raised);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;}
 .code-group-header .code-label{font-family:var(--mono);font-size:13px;font-weight:700;}
@@ -235,20 +260,7 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       </div>
       <div class="toolbar">
         <button class="btn" id="refresh-btn">&#8635; Muat ulang</button>
-      </div>
-      <div class="field-row" style="margin-bottom:10px;">
-        <div>
-          <label>Pilih No. Project (grafik &amp; export)</label>
-          <select id="project-select" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
-            <option value="ALL">Semua project</option>
-          </select>
-        </div>
-      </div>
-      <div id="chart-section" style="display:none;">
-        <div id="chart-container"></div>
-      </div>
-      <div class="toolbar">
-        <button class="btn" id="export-csv" style="flex:1;">&#128228; Export &amp; Download (Excel)</button>
+        <button class="btn" id="export-csv" style="flex:1;">&#128228; Export Semua Data</button>
       </div>
       <div id="export-hint" style="display:none;background:var(--amber-p);border:1px solid var(--amber);border-radius:8px;padding:12px 14px;margin-top:10px;font-size:13px;color:var(--ink-s);line-height:1.6;">
         <b>File tersimpan ke Downloads.</b> Untuk share ke WhatsApp/lainnya:
@@ -258,10 +270,10 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
           <li>Tap ikon <b>titik tiga (⋮)</b> di sebelah nama file &rarr; pilih <b>Share</b></li>
         </ol>
       </div>
-      <div id="delete-lock-hint" style="display:none;background:var(--amber-p);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--ink-s);">
-        &#128274; Tombol hapus (&#10005;) belum aktif — klik <b>Export &amp; Download (Excel)</b> di bawah dulu untuk membuat backup data, baru tombol hapus bisa dipakai.
+      <div id="delete-lock-hint" style="display:none;background:var(--amber-p);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;margin-top:12px;font-size:12px;color:var(--ink-s);">
+        &#128274; Tombol hapus (&#10005;) belum aktif — klik <b>Export Semua Data</b> di atas dulu untuk membuat backup, baru tombol hapus bisa dipakai.
       </div>
-      <div id="history-area"></div>
+      <div id="history-area" style="margin-top:12px;"></div>
     </div>
   </section>
 
@@ -510,11 +522,6 @@ function initInstrument(){
   });
   sel.onchange=updateInstrumentMode;
   updateInstrumentMode();
-
-  // Dropdown "Pilih No. Project" diisi dinamis di updateProjectDropdown()
-  // (dipanggil dari renderHistory setiap kali data dimuat, karena daftar
-  // project tergantung data yang ada, bukan daftar statis seperti alat)
-  $('project-select').onchange=()=>renderHistory(true);
 }
 
 function updateInstrumentMode(){
@@ -1411,24 +1418,19 @@ function updateManualCalc(){
 
 
 // HISTORY - grouped by Code
-function updateProjectDropdown(records){
-  const sel=$('project-select');
-  const prevValue=sel.value||'ALL';
-  const projects=[...new Set(records.map(r=>r.no_project||'-'))].sort();
+// Ekstrak nomor urut dari format No.Project seperti "SBL-LT051/STR-2605"
+// -> ambil "051" setelah "LT" untuk dipakai sebagai kunci urutan.
+function extractLTNumber(projectStr){
+  const match=String(projectStr).match(/LT\s*(\d+)/i);
+  return match?parseInt(match[1],10):null;
+}
 
-  sel.innerHTML='<option value="ALL">Semua project</option>';
-  projects.forEach(p=>{
-    const o=document.createElement('option');
-    o.value=p;o.textContent=p;
-    sel.appendChild(o);
-  });
-
-  // Pertahankan pilihan sebelumnya kalau masih ada di daftar baru
-  if(prevValue==='ALL'||projects.includes(prevValue)){
-    sel.value=prevValue;
-  } else {
-    sel.value='ALL';
-  }
+function compareProjects(a,b){
+  const numA=extractLTNumber(a), numB=extractLTNumber(b);
+  if(numA!==null && numB!==null)return numA-numB;
+  if(numA!==null)return -1;
+  if(numB!==null)return 1;
+  return String(a).localeCompare(String(b));
 }
 
 async function renderHistory(skipFetch){
@@ -1451,103 +1453,257 @@ async function renderHistory(skipFetch){
     dot.className='sync-dot';st.textContent='Data lokal saja.';records=loadLocal();
   }
 
-  if(!records.length){
-    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data.</p></div>';
-    cachedHistoryRecords=[];
-    renderChart();
-    return;
-  }
   cachedHistoryRecords=records;
-  updateProjectDropdown(records);
-
-  // Filter daftar kartu sesuai pilihan dropdown No. Project (chart & export
-  // sudah filter sendiri dari cachedHistoryRecords, ini khusus daftar kartu)
-  const selectedProjectForList=$('project-select')?$('project-select').value:'ALL';
-  const recordsForList=(selectedProjectForList==='ALL')?records:records.filter(r=>(r.no_project||'-')===selectedProjectForList);
   $('delete-lock-hint').style.display=hasExportedThisSession?'none':'block';
 
-  if(!recordsForList.length){
-    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data untuk project ini.</p></div>';
-    renderChart();
+  if(!records.length){
+    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data.</p></div>';
     return;
   }
 
-  // Group by instrument + no_project + code
-  const groups={};
-  recordsForList.forEach(r=>{
+  // Group semua data berdasarkan No.Project dulu (level teratas)
+  const byProject={};
+  records.forEach(r=>{
     const proj=r.no_project||'-';
-    const gkey=(r.instrument||'?')+'_'+proj+'_'+(r.code||'?');
-    if(!groups[gkey])groups[gkey]={instrument:r.instrument,no_project:proj,code:r.code,samples:[]};
-    groups[gkey].samples.push(r);
+    if(!byProject[proj])byProject[proj]=[];
+    byProject[proj].push(r);
   });
 
-  // Sort groups by instrument, then project, then code
-  const sortedKeys=Object.keys(groups).sort((a,b)=>{
-    const ga=groups[a],gb=groups[b];
-    if(ga.instrument!==gb.instrument)return ga.instrument.localeCompare(gb.instrument);
-    if(ga.no_project!==gb.no_project)return String(ga.no_project).localeCompare(String(gb.no_project));
-    return (ga.code||0)-(gb.code||0);
+  const sortedProjects=Object.keys(byProject).sort(compareProjects);
+  const availableInstruments=Object.entries(INSTRUMENTS).filter(([k,v])=>v.available);
+
+  let html='';
+  sortedProjects.forEach(proj=>{
+    html+=renderProjectBlock(proj, byProject[proj], availableInstruments);
+  });
+  area.innerHTML=html;
+}
+
+function renderProjectBlock(proj, projRecords, availableInstruments){
+  const projAttr=proj.replace(/"/g,'&quot;');
+  let html='<div class="project-block">';
+  html+='<div class="project-header">';
+  html+='<span class="project-title">'+proj+'</span>';
+  html+='<div class="project-actions">';
+  html+='<button onclick="toggleProjectChart(this,&quot;'+projAttr+'&quot;)">&#128202; Grafik</button>';
+  html+='<button onclick="exportProject(&quot;'+projAttr+'&quot;)">&#128228; Export</button>';
+  html+='</div>';
+  html+='</div>';
+
+  html+='<div class="project-chart-area" id="chart-area-'+cssSafeId(proj)+'" style="display:none;"></div>';
+
+  html+='<div class="project-instruments">';
+  availableInstruments.forEach(([instKey,inst])=>{
+    const instRecords=projRecords.filter(r=>r.instrument===instKey);
+    html+='<div class="instrument-subsection">';
+    html+='<div class="instrument-subheader">'+inst.label+'</div>';
+    if(instRecords.length===0){
+      html+='<div class="empty-instrument-note">Belum ada data tersimpan.</div>';
+    } else {
+      html+=renderCodeGroupCards(instRecords, instKey, inst);
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+
+  html+='</div>';
+  return html;
+}
+
+function cssSafeId(str){
+  return String(str).replace(/[^a-zA-Z0-9]/g,'_');
+}
+
+function renderCodeGroupCards(records, instKey, inst){
+  const primaryFields=inst.primaryFields||[];
+  const refFields=inst.refFields||[];
+
+  const groups={};
+  records.forEach(r=>{
+    const code=r.code!=null?r.code:'?';
+    if(!groups[code])groups[code]=[];
+    groups[code].push(r);
   });
 
-  let html='<div class="history-list">';
-  sortedKeys.forEach(gkey=>{
-    const g=groups[gkey];
-    const inst=INSTRUMENTS[g.instrument];
-    const primaryFields=inst?(inst.primaryFields||[]):[];
-    // Sort samples A-E
-    g.samples.sort((a,b)=>(a.sample||'').localeCompare(b.sample||''));
-    // Hitung avg per primary field
+  const sortedCodes=Object.keys(groups).sort((a,b)=>(parseFloat(a)||0)-(parseFloat(b)||0));
+
+  let html='';
+  sortedCodes.forEach(code=>{
+    const samples=groups[code].slice().sort((a,b)=>(a.sample||'').localeCompare(b.sample||''));
     const avgs={};
     primaryFields.forEach(f=>{
-      const vals=g.samples.map(s=>s.nilai&&s.nilai[f.key]!=null?s.nilai[f.key]:null).filter(v=>v!==null);
+      const vals=samples.map(s=>s.nilai&&s.nilai[f.key]!=null?s.nilai[f.key]:null).filter(v=>v!==null);
       avgs[f.key]=vals.length>0?(vals.reduce((a,b)=>a+b,0)/vals.length):null;
     });
     const avgStr=primaryFields.map(f=>f.key+'='+(avgs[f.key]!=null?avgs[f.key].toFixed(2):'-')+' '+f.unit).join(' | ');
 
-    html+='<div class="code-group">';
+    html+='<div class="code-group" style="margin-bottom:10px;">';
     html+='<div class="code-group-header">';
-    html+='<span class="code-label">'+(g.instrument||'?')+' \u2014 '+g.no_project+' / Code '+g.code+'</span>';
+    html+='<span class="code-label">Code '+code+'</span>';
     if(avgStr)html+='<span class="avg-badge">avg: '+avgStr+'</span>';
     html+='</div>';
     html+='<div class="sample-list">';
-    g.samples.forEach(r=>{
-      const refFields=inst?(inst.refFields||[]):[];
-      html+='<div class="hist-card">';
-      html+='<div class="hist-card-top">';
-      html+='<span class="sample-tag">'+(r.sample||'?')+'</span>';
-      html+='<span class="hist-date">'+(r.tanggal||'-')+'</span>';
-      html+='<span class="hist-op">'+( r.operator||'-')+'</span>';
-      const delDisabled=!hasExportedThisSession;
-      const delTitle=delDisabled?'Export data dulu sebelum bisa menghapus':'Hapus data ini';
-      html+='<button class="row-del" '+(delDisabled?'disabled':'')+' title="'+delTitle+'" onclick="delRecord(&quot;'+r.id+'&quot;,&quot;'+r.instrument+'&quot;)">&#10005;</button>';
-      html+='</div>';
-      html+='<div class="hist-values">';
-      primaryFields.forEach(f=>{
-        const v=r.nilai&&r.nilai[f.key]!=null?r.nilai[f.key]:'-';
-        html+='<div class="hv primary"><span class="hv-k">'+f.key+'</span><span class="hv-v">'+v+'</span><span class="hv-u">'+f.unit+'</span></div>';
-      });
-      refFields.forEach(f=>{
-        const v=r.nilai&&r.nilai[f.key]!=null?r.nilai[f.key]:'-';
-        html+='<div class="hv ref"><span class="hv-k">'+f.key+'</span><span class="hv-v">'+v+'</span><span class="hv-u">'+f.unit+'</span></div>';
-      });
-      html+='</div></div>';
+    samples.forEach(r=>{
+      html+=renderSampleCard(r, instKey, primaryFields, refFields);
     });
     html+='</div>';
-    // Avg row
-    if(g.samples.length>1){
+    if(samples.length>1){
       html+='<div class="avg-row"><span class="avg-label">Rata-rata</span>';
       primaryFields.forEach(f=>{
         const v=avgs[f.key]!=null?avgs[f.key].toFixed(3):'-';
         html+='<span class="avg-val">'+f.key+' = '+v+' '+f.unit+'</span>';
       });
-      html+='<span style="font-size:11px;color:var(--ink-f);margin-left:auto">n='+g.samples.length+'</span>';
+      html+='<span style="font-size:11px;color:var(--ink-f);margin-left:auto">n='+samples.length+'</span>';
       html+='</div>';
     }
     html+='</div>';
   });
+  return html;
+}
+
+function renderSampleCard(r, instKey, primaryFields, refFields){
+  const delDisabled=!hasExportedThisSession;
+  const delTitle=delDisabled?'Export data dulu sebelum bisa menghapus':'Hapus data ini';
+  let html='<div class="hist-card" id="card-'+r.id+'">';
+  html+='<div class="hist-card-top">';
+  html+='<span class="sample-tag">'+(r.sample||'?')+'</span>';
+  html+='<span class="hist-date">'+(r.tanggal||'-')+'</span>';
+  html+='<span class="hist-op">'+(r.operator||'-')+'</span>';
+  html+='<button class="row-edit" title="Edit data ini" onclick="startEditRecord(&quot;'+r.id+'&quot;)">&#9998;</button>';
+  html+='<button class="row-del" '+(delDisabled?'disabled':'')+' title="'+delTitle+'" onclick="delRecord(&quot;'+r.id+'&quot;,&quot;'+instKey+'&quot;)">&#10005;</button>';
   html+='</div>';
+  html+='<div class="hist-values" id="values-'+r.id+'">';
+  primaryFields.forEach(f=>{
+    const v=r.nilai&&r.nilai[f.key]!=null?r.nilai[f.key]:'-';
+    html+='<div class="hv primary"><span class="hv-k">'+f.key+'</span><span class="hv-v">'+v+'</span><span class="hv-u">'+f.unit+'</span></div>';
+  });
+  refFields.forEach(f=>{
+    const v=r.nilai&&r.nilai[f.key]!=null?r.nilai[f.key]:'-';
+    html+='<div class="hv ref"><span class="hv-k">'+f.key+'</span><span class="hv-v">'+v+'</span><span class="hv-u">'+f.unit+'</span></div>';
+  });
+  html+='</div></div>';
+  return html;
+}
+
+// ==== Edit data ====
+function startEditRecord(id){
+  const record=cachedHistoryRecords.find(r=>r.id===id);
+  if(!record)return;
+  const inst=INSTRUMENTS[record.instrument];
+  if(!inst)return;
+
+  const container=document.getElementById('values-'+id);
+  if(!container)return;
+
+  const allFields=[...(inst.primaryFields||[]),...(inst.refFields||[])];
+  let html='';
+  allFields.forEach(f=>{
+    const v=record.nilai&&record.nilai[f.key]!=null?record.nilai[f.key]:'';
+    html+='<div class="hv-edit"><label>'+f.key+'</label><input type="number" step="0.001" class="edit-input" data-key="'+f.key+'" value="'+v+'"><span style="font-size:9px;color:var(--ink-f);">'+f.unit+'</span></div>';
+  });
+  html+='<div class="edit-actions">'+
+    '<button class="btn-save-edit" onclick="saveEditRecord(&quot;'+id+'&quot;)">&#10003; Simpan</button>'+
+    '<button class="btn-cancel-edit" onclick="renderHistory(true)">Batal</button></div>';
+  container.innerHTML=html;
+  container.style.display='grid';
+}
+
+async function saveEditRecord(id){
+  const record=cachedHistoryRecords.find(r=>r.id===id);
+  if(!record)return;
+  const inputs=document.querySelectorAll('#values-'+id+' .edit-input');
+  const newNilai=Object.assign({}, record.nilai||{});
+  inputs.forEach(inp=>{
+    const key=inp.dataset.key;
+    const v=parseFloat(inp.value);
+    newNilai[key]=isNaN(v)?null:v;
+  });
+
+  record.nilai=newNilai;
+  let localRecords=loadLocal();
+  const idx=localRecords.findIndex(r=>r.id===id);
+  if(idx>=0){ localRecords[idx].nilai=newNilai; saveLocal(localRecords); }
+
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(sbUrl && sbKey){
+    fetch(sbUrl+'/rest/v1/records?id=eq.'+encodeURIComponent(id), {
+      method:'PATCH',
+      headers: supabaseHeaders({'Prefer':'return=minimal'}),
+      body: JSON.stringify({nilai:newNilai})
+    }).catch(()=>{ toast('Gagal sync perubahan ke database'); });
+  }
+
+  toast('Data diperbarui \u2713');
+  renderHistory(true);
+}
+
+// ==== Grafik on-demand per project ====
+function toggleProjectChart(btn, proj){
+  const area=document.getElementById('chart-area-'+cssSafeId(proj));
+  if(!area)return;
+
+  const isOpen=area.style.display!=='none' && area.dataset.open==='1';
+  if(isOpen){
+    area.style.display='none';
+    area.dataset.open='0';
+    area.innerHTML='';
+    btn.innerHTML='&#128202; Grafik';
+    return;
+  }
+
+  const projectFiltered=cachedHistoryRecords.filter(r=>(r.no_project||'-')===proj);
+  const chartableEntries=Object.entries(INSTRUMENTS).filter(([k,v])=>v.available&&v.indexConfig);
+
+  let html='';
+  const toRender=[];
+  chartableEntries.forEach(([instKey,inst])=>{
+    const filtered=projectFiltered.filter(r=>r.instrument===instKey);
+    if(!filtered.length)return;
+    const cfg=inst.indexConfig;
+    const result=computeIndexPerCode(filtered, cfg);
+    const canvasId='chart-canvas-'+cssSafeId(proj)+'-'+instKey;
+    if(!result.anyMatched){
+      html+='<div class="chart-box"><div class="chart-box-title">'+inst.label+' \u2014 '+cfg.label+'</div>'+
+        '<div class="chart-warning">Belum ada data Basis Weight \u2014 Coating yang cocok (No.Project + Code + Sample sama) untuk alat ini.</div></div>';
+    } else {
+      html+='<div class="chart-box"><div class="chart-box-title">'+inst.label+' \u2014 '+cfg.label+' rata-rata per Code ('+cfg.unit+')</div>'+
+        '<canvas id="'+canvasId+'" height="160"></canvas></div>';
+      toRender.push({canvasId, result, cfg});
+    }
+  });
+
+  if(!html){
+    html='<div class="chart-warning">Belum ada data alat dengan Index (RCT/Bursting/Tearing/Tensile/Wet Tensile) di project ini.</div>';
+  }
+
   area.innerHTML=html;
-  renderChart();
+  area.style.display='block';
+  area.dataset.open='1';
+  btn.innerHTML='&#128202; Tutup Grafik';
+
+  toRender.forEach(({canvasId,result,cfg})=>{
+    const canvas=document.getElementById(canvasId);
+    if(canvas){
+      const chart=drawBarChart(canvas, result.labels, result.data, cfg.label, cfg.unit);
+      historyChartInstance.push(chart);
+    }
+  });
+}
+
+// ==== Export per-project ====
+async function exportProject(proj){
+  const allRecords=await getAllRecordsGrouped();
+  const records=allRecords.filter(r=>(r.no_project||'-')===proj);
+  if(!records.length){toast('Belum ada data untuk project ini');return;}
+  const wb=buildWorkbook(records,'ALL');
+  if(!wb){toast('Belum ada data untuk diexport');return;}
+  const wbArrayBuffer=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const filename='pnshar_lab_'+cssSafeId(proj)+'_'+today()+'.xlsx';
+  const blob=new Blob([wbArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+  hasExportedThisSession=true;
+  $('export-hint').style.display='block';
+  renderHistory(true);
 }
 
 // Bangun lookup BW_After per kombinasi No.Project+Code+Sample, dipakai
@@ -1610,64 +1766,6 @@ function drawBarChart(canvas, labels, data, label, unit){
       scales:{ y:{ beginAtZero:true } }
     }
   });
-}
-
-function renderChart(){
-  const selectedProject=$('project-select').value;
-  const chartSection=$('chart-section');
-  const container=$('chart-container');
-
-  // Bersihkan instance chart lama supaya tidak bocor memori
-  (historyChartInstance||[]).forEach(c=>c.destroy());
-  historyChartInstance=[];
-  container.innerHTML='';
-
-  const projectFiltered=(selectedProject==='ALL')
-    ? cachedHistoryRecords
-    : cachedHistoryRecords.filter(r=>(r.no_project||'-')===selectedProject);
-
-  if(!projectFiltered.length){
-    chartSection.style.display='none';
-    return;
-  }
-
-  // Cek semua alat yang punya indexConfig (RCT, Bursting, Tearing, Tensile,
-  // Wet Tensile) -- untuk tiap alat yang PUNYA data di project ini, buat
-  // 1 chart. Alat yang tidak ada datanya di project ini otomatis dilewati.
-  const chartableEntries=Object.entries(INSTRUMENTS).filter(([k,v])=>v.available&&v.indexConfig);
-  let anyChartShown=false;
-
-  chartableEntries.forEach(([instKey, inst])=>{
-    const filtered=projectFiltered.filter(r=>r.instrument===instKey);
-    if(!filtered.length)return; // alat ini tidak ada datanya di project yang dipilih
-
-    const cfg=inst.indexConfig;
-    const {labels, data, anyMatched}=computeIndexPerCode(filtered, cfg);
-    anyChartShown=true;
-
-    const box=document.createElement('div');
-    box.style.cssText='background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px;';
-
-    if(!anyMatched){
-      box.innerHTML='<div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">'+
-        inst.label+' \u2014 '+cfg.label+'</div>'+
-        '<div style="background:var(--amber-p);border:1px solid var(--amber);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--ink-s);">'+
-        'Belum ada data Basis Weight \u2014 Coating yang cocok (No.Project + Code + Sample sama) untuk alat ini.</div>';
-      container.appendChild(box);
-      return;
-    }
-
-    box.innerHTML='<div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">'+
-      inst.label+' \u2014 '+cfg.label+' rata-rata per Code ('+cfg.unit+')</div>'+
-      '<canvas height="160"></canvas>';
-    container.appendChild(box);
-
-    const canvas=box.querySelector('canvas');
-    const chart=drawBarChart(canvas, labels, data, cfg.label, cfg.unit);
-    historyChartInstance.push(chart);
-  });
-
-  chartSection.style.display=anyChartShown?'block':'none';
 }
 
 async function delRecord(id,instrument){
@@ -1867,19 +1965,14 @@ async function exportCSV(){
 
   btn.textContent='Menyiapkan file...';
   btn.disabled=true;
-  const allRecords=await getAllRecordsGrouped();
-  if(!allRecords.length){toast('Belum ada data');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
-
-  const selectedProject=$('project-select').value;
-  const records=(selectedProject==='ALL')?allRecords:allRecords.filter(r=>(r.no_project||'-')===selectedProject);
-  if(!records.length){toast('Belum ada data untuk project ini');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
+  const records=await getAllRecordsGrouped();
+  if(!records.length){toast('Belum ada data');btn.textContent='\u{1F4E4} Export Semua Data';btn.disabled=false;return;}
 
   const wb=buildWorkbook(records, 'ALL');
-  if(!wb){toast('Belum ada data untuk diexport');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
+  if(!wb){toast('Belum ada data untuk diexport');btn.textContent='\u{1F4E4} Export Semua Data';btn.disabled=false;return;}
 
   const wbArrayBuffer=XLSX.write(wb,{bookType:'xlsx',type:'array'});
-  const namePart=selectedProject==='ALL'?'semua_project':selectedProject.toLowerCase();
-  const filename='pnshar_lab_'+namePart+'_'+today()+'.xlsx';
+  const filename='pnshar_lab_semua_data_'+today()+'.xlsx';
   const blob=new Blob([wbArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 
   const a=document.createElement('a');
@@ -1887,7 +1980,7 @@ async function exportCSV(){
   a.download=filename;
   a.click();
 
-  btn.textContent='\u{1F4E4} Export & Download (Excel)';
+  btn.textContent='\u{1F4E4} Export Semua Data';
   btn.disabled=false;
   $('export-hint').style.display='block';
 
