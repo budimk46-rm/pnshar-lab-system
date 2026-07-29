@@ -1777,7 +1777,7 @@ function toggleProjectChart(btn, proj){
   toRender.forEach(({canvasId,result,cfg})=>{
     const canvas=document.getElementById(canvasId);
     if(canvas){
-      const chart=drawBarChart(canvas, result.labels, result.data, cfg.label, cfg.unit);
+      const chart=drawBarChart(canvas, result.labels, result.data, result.codes, cfg.label, cfg.unit);
       historyChartInstance.push(chart);
     }
   });
@@ -1835,14 +1835,16 @@ function computeIndexPerCode(filtered, indexConfig){
     return parseFloat(ga.code)-parseFloat(gb.code);
   });
   const labels=groupKeys.map(k=>byGroup[k].project+' - Code '+byGroup[k].code);
+  const codes=groupKeys.map(k=>byGroup[k].code);
   const data=groupKeys.map(k=>{
     const vals=byGroup[k].values;
     return vals.length?Math.round((vals.reduce((a,b)=>a+b,0)/vals.length)*1000)/1000:0;
   });
-  return {labels, data, anyMatched};
+  return {labels, data, codes, anyMatched};
 }
 
-function drawBarChart(canvas, labels, data, label, unit){
+function drawBarChart(canvas, labels, data, codes, label, unit){
+  const colors=(codes||[]).map(c=> parseFloat(c)===1 ? '#f19719' : '#14459e');
   return new Chart(canvas.getContext('2d'), {
     type:'bar',
     data:{
@@ -1850,7 +1852,7 @@ function drawBarChart(canvas, labels, data, label, unit){
       datasets:[{
         label:label+' ('+unit+')',
         data:data,
-        backgroundColor:'#14459e'
+        backgroundColor:colors
       }]
     },
     options:{
