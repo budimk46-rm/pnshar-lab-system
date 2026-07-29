@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pnshar-lab-v3';
+const CACHE_NAME = 'pnshar-lab-v4';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -29,7 +29,6 @@ self.addEventListener('fetch', (event) => {
   const isOwnAsset = url.origin === self.location.origin;
 
   if (event.request.method !== 'GET' || !isOwnAsset) {
-    // Biarkan API call (Gemini, Google Sheets) langsung ke network, tidak di-cache
     return;
   }
 
@@ -39,34 +38,43 @@ self.addEventListener('fetch', (event) => {
                  url.pathname.endsWith('/');
 
   if (isHTML) {
-    // NETWORK-FIRST untuk HTML: selalu coba ambil versi terbaru dulu.
-    // Cache hanya dipakai kalau benar-benar tidak ada koneksi internet.
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, networkResponse.clone());
-          });
-          return networkResponse;
-        })
-        .catch(() => caches.match(event.request))
-    );
+    event.respondWith((async () => {
+      try {
+        const networkResponse = await fetch(event.request);
+        const responseForCache = networkResponse.clone();
+        caches.open(CACHE_NAME)
+          .then((cache) => cache.put(event.request, responseForCache))
+          .catch(() => {});
+        return networkResponse;
+      } catch (err) {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        throw err;
+      }
+    })());
     return;
   }
 
-  // CACHE-FIRST untuk aset statis (icon, manifest) supaya loading cepat,
-  // tetap update cache di background untuk kunjungan berikutnya.
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
-        .then((networkResponse) => {
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, networkResponse.clone());
-          });
-          return networkResponse;
-        })
-        .catch(() => cached);
-      return cached || fetchPromise;
-    })
-  );
+  event.respondWith((async () => {
+    const cached = await caches.match(event.request);
+    if (cached) {
+      fetch(event.request).then((networkResponse) => {
+        const responseForCache = networkResponse.clone();
+        caches.open(CACHE_NAME)
+          .then((cache) => cache.put(event.request, responseForCache))
+          .catch(() => {});
+      }).catch(() => {});
+      return cached;
+    }
+    try {
+      const networkResponse = await fetch(event.request);
+      const responseForCache = networkResponse.clone();
+      caches.open(CACHE_NAME)
+        .then((cache) => cache.put(event.request, responseForCache))
+        .catch(() => {});
+      return networkResponse;
+    } catch (err) {
+      throw err;
+    }
+  })());
 });
