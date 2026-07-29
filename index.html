@@ -282,10 +282,14 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       <p class="help" id="anthropic-msg" style="margin-top:8px;"></p>
     </div>
     <div class="card">
-      <h2>Koneksi Google Sheets</h2>
-      <p class="help">Paste URL Web App dari Google Apps Script untuk menyimpan data ke Google Sheets bersama.</p>
-      <input type="url" id="script-url" placeholder="https://script.google.com/macros/s/.../exec" style="margin-top:10px;font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);background:var(--raised);color:var(--ink);width:100%;">
-      <button class="btn-primary" id="save-url-btn" style="margin-top:10px">Simpan &amp; sambungkan</button>
+      <h2>Koneksi Database (Supabase)</h2>
+      <p class="help">Paste "Project URL" dan "anon public" key dari Supabase (Project Settings &rarr; API) untuk menyimpan data bersama semua operator.</p>
+      <input type="url" id="supabase-url" placeholder="https://xxxxx.supabase.co" style="margin-top:10px;font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);background:var(--raised);color:var(--ink);width:100%;">
+      <input type="password" id="supabase-key" placeholder="anon public key (eyJhbGci...)" style="margin-top:8px;font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);background:var(--raised);color:var(--ink);width:100%;">
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn-primary" id="save-url-btn" style="flex:1;">Simpan &amp; sambungkan</button>
+        <button class="btn" id="show-supabase-btn" style="width:100px;">Tampilkan</button>
+      </div>
       <p class="help" id="settings-msg" style="margin-top:8px"></p>
     </div>
   </section>
@@ -388,7 +392,8 @@ const INSTRUMENTS = {
 };
 
 const LOCAL_KEY='pnshar_records_v5';
-const URL_KEY='pnshar_script_url';
+const SUPABASE_URL_KEY='apc_supabase_url';
+const SUPABASE_ANON_KEY='apc_supabase_anon_key';
 const VISION_KEY='pnshar_vision_key';
 const ANTHROPIC_KEY='pnshar_anthropic_key';
 const PROJECT_KEY='pnshar_last_project';
@@ -397,8 +402,10 @@ let cachedHistoryRecords=[];
 let historyChartInstance=[];
 
 const $=id=>document.getElementById(id);
-const getUrl=()=>localStorage.getItem(URL_KEY)||'';
-const setUrl=v=>localStorage.setItem(URL_KEY,v);
+const getSupabaseUrl=()=>localStorage.getItem(SUPABASE_URL_KEY)||'';
+const setSupabaseUrl=v=>localStorage.setItem(SUPABASE_URL_KEY,v);
+const getSupabaseKey=()=>localStorage.getItem(SUPABASE_ANON_KEY)||'';
+const setSupabaseKey=v=>localStorage.setItem(SUPABASE_ANON_KEY,v);
 const getVisionKey=()=>localStorage.getItem(VISION_KEY)||'';
 const setVisionKey=v=>localStorage.setItem(VISION_KEY,v);
 const getAnthropicKey=()=>localStorage.getItem(ANTHROPIC_KEY)||'';
@@ -429,7 +436,8 @@ function switchTab(id){
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
   if(id==='history')renderHistory();
   if(id==='settings'){
-    $('script-url').value=getUrl();
+    $('supabase-url').value=getSupabaseUrl();
+    $('supabase-key').value=getSupabaseKey();
     // Tampilkan key yang sudah tersimpan (dalam format tersembunyi)
     const savedKey=getVisionKey();
     if(savedKey){
@@ -589,6 +597,15 @@ function handleFile(){
 
 // Helper bersama untuk memanggil Gemini API dengan retry otomatis
 // kalau kena rate limit (quota per menit terlampaui / HTTP 429).
+function supabaseHeaders(extra){
+  const key=getSupabaseKey();
+  return Object.assign({
+    'apikey': key,
+    'Authorization': 'Bearer '+key,
+    'Content-Type': 'application/json'
+  }, extra||{});
+}
+
 async function callGeminiOCR(visionKey, base64Image, mimeType, prompt, onStatus){
   const maxRetries=1;
   const retryDelayMs=6000; // Gemini biasanya minta tunggu beberapa detik saja
@@ -1134,15 +1151,16 @@ async function persistRecord(nilai, meta, resetUI, sampleLetterOverride, silent)
 
   const records=loadLocal();records.unshift(record);saveLocal(records);
 
-  const url=getUrl();
-  const sheetTarget=inst.sheet||'records_rct';
-  if(url){
-    // Fire-and-forget: JANGAN await fetch ke Sheets, supaya operator tidak
-    // perlu menunggu latency Google Apps Script (bisa 1-5 detik).
-    // Data sudah aman tersimpan lokal, sync ke Sheets berjalan di background.
-    const payload=Object.assign({action:'save',sheet:sheetTarget},record);
-    fetch(url+'?data='+encodeURIComponent(JSON.stringify(payload)),{method:'GET',mode:'no-cors'})
-      .catch(()=>{ toast('Gagal sync ke Sheets (data tetap aman di HP ini)'); });
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(sbUrl && sbKey){
+    // Fire-and-forget: tidak perlu await -- Supabase memang sudah cepat
+    // (biasanya <200ms), tapi tetap non-blocking supaya UX tidak pernah
+    // tertunda oleh masalah jaringan.
+    fetch(sbUrl+'/rest/v1/records?on_conflict=id', {
+      method:'POST',
+      headers: supabaseHeaders({'Prefer':'resolution=merge-duplicates,return=minimal'}),
+      body: JSON.stringify(record)
+    }).catch(()=>{ toast('Gagal sync ke database (data tetap aman di HP ini)'); });
     if(!silent)toast(project+' Code '+code+'-'+sampleLetter+' tersimpan \u2713');
   } else {
     if(!silent)toast(project+' Code '+code+'-'+sampleLetter+' tersimpan');
@@ -1223,8 +1241,8 @@ async function saveMultiSampleRecord(inst){
   if(savedCount===0){toast('Isi minimal satu nilai untuk disimpan');return;}
 
   // Sync ke tab Riwayat juga
-  const url=getUrl();
-  toast(savedCount+' sample tersimpan untuk '+project+' Code '+code+(url?' \u2713':' (lokal)'));
+  const hasSb=getSupabaseUrl()&&getSupabaseKey();
+  toast(savedCount+' sample tersimpan untuk '+project+' Code '+code+(hasSb?' \u2713':' (lokal)'));
 
   $('file-input').value='';
   $('preview-area').innerHTML='';
@@ -1354,22 +1372,19 @@ function updateManualCalc(){
 async function renderHistory(skipFetch){
   const area=$('history-area'),dot=$('sync-dot'),st=$('sync-text');
   let records=[];
-  const url=getUrl();
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
   if(skipFetch){
     records=cachedHistoryRecords;
-  } else if(url){
+  } else if(sbUrl && sbKey){
     st.textContent='Memuat data...';
     try{
-      const sheetNames=[...new Set(Object.values(INSTRUMENTS).filter(i=>i.available).map(i=>i.sheet||'records_rct'))];
-      const results=await Promise.all(sheetNames.map(sn=>fetch(url+'?action=list&sheet='+encodeURIComponent(sn)).then(r=>r.json())));
-      let combined=[];
-      results.forEach(d=>{if(d.ok&&d.records)combined=combined.concat(d.records);});
-      const seen=new Set();
-      combined=combined.filter(r=>{if(seen.has(r.id))return false;seen.add(r.id);return true;});
-      combined.sort((a,b)=>(b.waktu_input||'').localeCompare(a.waktu_input||''));
-      records=combined;
+      const res=await fetch(sbUrl+'/rest/v1/records?select=*&order=waktu_input.desc', {
+        headers: supabaseHeaders()
+      });
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      records=await res.json();
       dot.className='sync-dot ok';st.textContent='Terhubung ('+records.length+' data)';
-    }catch(e){dot.className='sync-dot err';st.textContent='Gagal load Sheets, tampil data lokal.';records=loadLocal();}
+    }catch(e){dot.className='sync-dot err';st.textContent='Gagal load database, tampil data lokal.';records=loadLocal();}
   } else {
     dot.className='sync-dot';st.textContent='Data lokal saja.';records=loadLocal();
   }
@@ -1546,28 +1561,29 @@ function renderChart(){
 
 async function delRecord(id,instrument){
   let records=loadLocal().filter(r=>r.id!==id);saveLocal(records);
-  // Update cache & redraw INSTAN dari cache, tidak perlu tunggu fetch ke Sheets
+  // Update cache & redraw INSTAN dari cache, tidak perlu tunggu network
   cachedHistoryRecords=cachedHistoryRecords.filter(r=>r.id!==id);
   renderHistory(true);
   toast('Data dihapus');
 
-  const url=getUrl();
-  const inst=INSTRUMENTS[instrument];
-  const sheetTarget=inst?(inst.sheet||'records_rct'):'records_rct';
-  if(url){
-    fetch(url+'?data='+encodeURIComponent(JSON.stringify({action:'delete',id:id,sheet:sheetTarget})),{method:'GET',mode:'no-cors'})
-      .catch(()=>{ toast('Gagal sync hapus ke Sheets'); });
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(sbUrl && sbKey){
+    fetch(sbUrl+'/rest/v1/records?id=eq.'+encodeURIComponent(id), {
+      method:'DELETE',
+      headers: supabaseHeaders()
+    }).catch(()=>{ toast('Gagal sync hapus ke database'); });
   }
 }
 
 async function getAllRecordsGrouped(){
-  const url=getUrl();let records=loadLocal();
-  if(url){
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  let records=loadLocal();
+  if(sbUrl && sbKey){
     try{
-      const sheetNames=[...new Set(Object.values(INSTRUMENTS).filter(i=>i.available).map(i=>i.sheet||'records_rct'))];
-      const results=await Promise.all(sheetNames.map(sn=>fetch(url+'?action=list&sheet='+encodeURIComponent(sn)).then(r=>r.json())));
-      let combined=[];results.forEach(d=>{if(d.ok&&d.records)combined=combined.concat(d.records);});
-      records=combined;
+      const res=await fetch(sbUrl+'/rest/v1/records?select=*&order=waktu_input.desc', {
+        headers: supabaseHeaders()
+      });
+      if(res.ok)records=await res.json();
     }catch(e){}
   }
   return records;
@@ -1784,9 +1800,17 @@ $('show-anthropic-btn').onclick=()=>{
   else{inp.type='password';$('show-anthropic-btn').textContent='Tampilkan';}
 };
 $('save-url-btn').onclick=()=>{
-  const v=$('script-url').value.trim();setUrl(v);
-  $('settings-msg').textContent=v?'Tersimpan. Buka tab Riwayat untuk cek koneksi.':'Koneksi dihapus.';
+  const u=$('supabase-url').value.trim();
+  const k=$('supabase-key').value.trim();
+  setSupabaseUrl(u);
+  setSupabaseKey(k);
+  $('settings-msg').textContent=(u&&k)?'Tersimpan. Buka tab Riwayat untuk cek koneksi.':'Koneksi belum lengkap (URL & key harus diisi keduanya).';
   toast('Pengaturan disimpan');
+};
+$('show-supabase-btn').onclick=()=>{
+  const inp=$('supabase-key');
+  if(inp.type==='password'){inp.type='text';$('show-supabase-btn').textContent='Sembunyikan';}
+  else{inp.type='password';$('show-supabase-btn').textContent='Tampilkan';}
 };
 $('to-settings').onclick=()=>switchTab('settings');
 
