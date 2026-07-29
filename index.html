@@ -1137,11 +1137,13 @@ async function persistRecord(nilai, meta, resetUI, sampleLetterOverride, silent)
   const url=getUrl();
   const sheetTarget=inst.sheet||'records_rct';
   if(url){
-    try{
-      const payload=Object.assign({action:'save',sheet:sheetTarget},record);
-      await fetch(url+'?data='+encodeURIComponent(JSON.stringify(payload)),{method:'GET',mode:'no-cors'});
-      if(!silent)toast(project+' Code '+code+'-'+sampleLetter+' tersimpan \u2713');
-    }catch(e){if(!silent)toast('Tersimpan lokal. Gagal sync Sheets.');}
+    // Fire-and-forget: JANGAN await fetch ke Sheets, supaya operator tidak
+    // perlu menunggu latency Google Apps Script (bisa 1-5 detik).
+    // Data sudah aman tersimpan lokal, sync ke Sheets berjalan di background.
+    const payload=Object.assign({action:'save',sheet:sheetTarget},record);
+    fetch(url+'?data='+encodeURIComponent(JSON.stringify(payload)),{method:'GET',mode:'no-cors'})
+      .catch(()=>{ toast('Gagal sync ke Sheets (data tetap aman di HP ini)'); });
+    if(!silent)toast(project+' Code '+code+'-'+sampleLetter+' tersimpan \u2713');
   } else {
     if(!silent)toast(project+' Code '+code+'-'+sampleLetter+' tersimpan');
   }
@@ -1349,11 +1351,13 @@ function updateManualCalc(){
 
 
 // HISTORY - grouped by Code
-async function renderHistory(){
+async function renderHistory(skipFetch){
   const area=$('history-area'),dot=$('sync-dot'),st=$('sync-text');
   let records=[];
   const url=getUrl();
-  if(url){
+  if(skipFetch){
+    records=cachedHistoryRecords;
+  } else if(url){
     st.textContent='Memuat data...';
     try{
       const sheetNames=[...new Set(Object.values(INSTRUMENTS).filter(i=>i.available).map(i=>i.sheet||'records_rct'))];
@@ -1542,11 +1546,18 @@ function renderChart(){
 
 async function delRecord(id,instrument){
   let records=loadLocal().filter(r=>r.id!==id);saveLocal(records);
+  // Update cache & redraw INSTAN dari cache, tidak perlu tunggu fetch ke Sheets
+  cachedHistoryRecords=cachedHistoryRecords.filter(r=>r.id!==id);
+  renderHistory(true);
+  toast('Data dihapus');
+
   const url=getUrl();
   const inst=INSTRUMENTS[instrument];
   const sheetTarget=inst?(inst.sheet||'records_rct'):'records_rct';
-  if(url){try{await fetch(url+'?data='+encodeURIComponent(JSON.stringify({action:'delete',id:id,sheet:sheetTarget})),{method:'GET',mode:'no-cors'});}catch(e){}}
-  renderHistory();toast('Data dihapus');
+  if(url){
+    fetch(url+'?data='+encodeURIComponent(JSON.stringify({action:'delete',id:id,sheet:sheetTarget})),{method:'GET',mode:'no-cors'})
+      .catch(()=>{ toast('Gagal sync hapus ke Sheets'); });
+  }
 }
 
 async function getAllRecordsGrouped(){
@@ -1783,7 +1794,7 @@ initTabs();initInstrument();initUpload();
 $('read-btn').onclick=readReceipt;
 $('save-btn').onclick=saveRecord;
 $('save-manual-btn').onclick=saveManualRecord;
-$('refresh-btn').onclick=renderHistory;
+$('refresh-btn').onclick=()=>renderHistory(false);
 $('export-csv').onclick=exportCSV;
 
 // Setup field No. Project: load nilai terakhir, auto-uppercase, auto-simpan
