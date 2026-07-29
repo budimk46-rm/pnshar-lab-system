@@ -1492,18 +1492,20 @@ async function renderHistory(skipFetch){
 
 function renderProjectBlock(proj, projRecords, availableInstruments){
   const projAttr=proj.replace(/"/g,'&quot;');
+  const safeId=cssSafeId(proj);
   let html='<div class="project-block">';
   html+='<div class="project-header">';
   html+='<span class="project-title">'+proj+'</span>';
   html+='<div class="project-actions">';
   html+='<button onclick="toggleProjectChart(this,&quot;'+projAttr+'&quot;)">&#128202; Grafik</button>';
   html+='<button onclick="exportProject(&quot;'+projAttr+'&quot;)">&#128228; Export</button>';
+  html+='<button onclick="toggleProjectData(this,&quot;'+safeId+'&quot;)">&#128065; Hide</button>';
   html+='</div>';
   html+='</div>';
 
-  html+='<div class="project-chart-area" id="chart-area-'+cssSafeId(proj)+'" style="display:none;"></div>';
+  html+='<div class="project-chart-area" id="chart-area-'+safeId+'" style="display:none;"></div>';
 
-  html+='<div class="project-instruments">';
+  html+='<div class="project-instruments" id="instruments-'+safeId+'">';
   availableInstruments.forEach(([instKey,inst])=>{
     const instRecords=projRecords.filter(r=>r.instrument===instKey);
     html+='<div class="instrument-subsection">';
@@ -1519,6 +1521,14 @@ function renderProjectBlock(proj, projRecords, availableInstruments){
 
   html+='</div>';
   return html;
+}
+
+function toggleProjectData(btn, safeId){
+  const el=document.getElementById('instruments-'+safeId);
+  if(!el)return;
+  const isHidden=el.style.display==='none';
+  el.style.display=isHidden?'block':'none';
+  btn.innerHTML=isHidden?'&#128065; Hide':'&#128064; Unhide';
 }
 
 function cssSafeId(str){
