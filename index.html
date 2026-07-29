@@ -102,7 +102,7 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .instrument-subsection:last-child{margin-bottom:0;}
 .instrument-subheader{font-size:12px;font-weight:700;color:var(--ink);background:var(--moss-p);display:inline-block;padding:4px 10px;border-radius:6px;margin-bottom:8px;}
 .empty-instrument-note{font-size:12px;color:var(--ink-f);font-style:italic;padding:6px 2px;}
-.row-edit{background:none;border:none;cursor:pointer;color:var(--ink-f);font-size:13px;padding:4px 6px;}
+.row-edit{background:none;border:none;cursor:pointer;color:var(--ink-f);font-size:11px;padding:2px 3px;}
 .row-edit:hover{color:var(--brand-blue);}
 .hv-edit{display:flex;flex-direction:column;gap:2px;background:var(--moss-p);border-radius:6px;padding:6px;text-align:center;}
 .hv-edit label{font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--ink);opacity:.7;}
@@ -115,23 +115,23 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .code-group-header{background:var(--brand-blue);color:var(--raised);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;}
 .code-group-header .code-label{font-family:var(--mono);font-size:13px;font-weight:700;}
 .code-group-header .avg-badge{font-size:12px;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:100px;}
-.sample-list{display:flex;flex-direction:column;gap:0;}
-.hist-card{border-bottom:1px solid var(--line);padding:12px 14px;background:var(--raised);}
-.hist-card:last-child{border-bottom:none;}
-.hist-card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
-.hist-card-top .sample-tag{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--raised);background:var(--moss);width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;}
-.hist-card-top .hist-date{font-family:var(--mono);font-size:11px;color:var(--ink-f);}
-.hist-card-top .hist-op{font-size:11px;color:var(--ink-s);}
-.row-del{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--ink-f);font-size:13px;padding:4px 6px;}
+.sample-list{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px;}
+.hist-card{border:1px solid var(--line);border-radius:8px;padding:8px 6px;background:var(--raised);text-align:center;position:relative;}
+.hist-card-top{display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:6px;position:relative;}
+.hist-card-top .sample-tag{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--raised);background:var(--moss);width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;}
+.hist-card-top .hist-date{display:none;}
+.hist-card-top .hist-op{display:none;}
+.hist-card-actions{position:absolute;top:-4px;right:-4px;display:flex;gap:0;}
+.row-del{background:none;border:none;cursor:pointer;color:var(--ink-f);font-size:11px;padding:2px 3px;}
 .row-del:disabled{opacity:.3;cursor:not-allowed;}
 .row-del:disabled:hover{color:var(--ink-f);}
 .row-del:hover{color:var(--rust);}
-.hist-values{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:6px;}
-.hv{border-radius:6px;padding:7px 6px;text-align:center;}
+.hist-values{display:flex;flex-direction:column;gap:4px;}
+.hv{border-radius:6px;padding:6px 4px;text-align:center;}
 .hv.primary{background:var(--moss-p);}
 .hv.ref{background:#f0f0f0;}
 .hv-k{display:block;font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--moss-d);opacity:.7;}
-.hv-v{display:block;font-size:15px;font-weight:700;color:var(--moss-d);}
+.hv-v{display:block;font-size:14px;font-weight:700;color:var(--moss-d);}
 .hv.ref .hv-v{font-size:13px;color:var(--ink-s);}
 .hv-u{display:block;font-size:9px;color:var(--moss-d);opacity:.6;}
 .avg-row{background:var(--amber-p);border-top:2px solid var(--amber);padding:10px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
@@ -1580,13 +1580,16 @@ function renderCodeGroupCards(records, instKey, inst){
 function renderSampleCard(r, instKey, displayFields){
   const delDisabled=!hasExportedThisSession;
   const delTitle=delDisabled?'Export data dulu sebelum bisa menghapus':'Hapus data ini';
-  let html='<div class="hist-card" id="card-'+r.id+'">';
+  const cardTooltip='Tanggal: '+(r.tanggal||'-')+' | Operator: '+(r.operator||'-');
+  let html='<div class="hist-card" id="card-'+r.id+'" title="'+cardTooltip.replace(/"/g,'&quot;')+'">';
   html+='<div class="hist-card-top">';
   html+='<span class="sample-tag">'+(r.sample||'?')+'</span>';
   html+='<span class="hist-date">'+(r.tanggal||'-')+'</span>';
   html+='<span class="hist-op">'+(r.operator||'-')+'</span>';
+  html+='<span class="hist-card-actions">';
   html+='<button class="row-edit" title="Edit data ini" onclick="startEditRecord(&quot;'+r.id+'&quot;)">&#9998;</button>';
   html+='<button class="row-del" '+(delDisabled?'disabled':'')+' title="'+delTitle+'" onclick="delRecord(&quot;'+r.id+'&quot;,&quot;'+instKey+'&quot;)">&#10005;</button>';
+  html+='</span>';
   html+='</div>';
   html+='<div class="hist-values" id="values-'+r.id+'">';
   displayFields.forEach(f=>{
