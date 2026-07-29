@@ -1834,7 +1834,7 @@ function computeIndexPerCode(filtered, indexConfig){
     if(ga.project!==gb.project)return String(ga.project).localeCompare(String(gb.project));
     return parseFloat(ga.code)-parseFloat(gb.code);
   });
-  const labels=groupKeys.map(k=>byGroup[k].project+' - Code '+byGroup[k].code);
+  const labels=groupKeys.map(k=>'Code '+byGroup[k].code);
   const codes=groupKeys.map(k=>byGroup[k].code);
   const data=groupKeys.map(k=>{
     const vals=byGroup[k].values;
