@@ -96,6 +96,8 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .hist-card-top .hist-date{font-family:var(--mono);font-size:11px;color:var(--ink-f);}
 .hist-card-top .hist-op{font-size:11px;color:var(--ink-s);}
 .row-del{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--ink-f);font-size:13px;padding:4px 6px;}
+.row-del:disabled{opacity:.3;cursor:not-allowed;}
+.row-del:disabled:hover{color:var(--ink-f);}
 .row-del:hover{color:var(--rust);}
 .hist-values{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:6px;}
 .hv{border-radius:6px;padding:7px 6px;text-align:center;}
@@ -256,6 +258,9 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
           <li>Tap ikon <b>titik tiga (⋮)</b> di sebelah nama file &rarr; pilih <b>Share</b></li>
         </ol>
       </div>
+      <div id="delete-lock-hint" style="display:none;background:var(--amber-p);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--ink-s);">
+        &#128274; Tombol hapus (&#10005;) belum aktif — klik <b>Export &amp; Download (Excel)</b> di bawah dulu untuk membuat backup data, baru tombol hapus bisa dipakai.
+      </div>
       <div id="history-area"></div>
     </div>
   </section>
@@ -400,6 +405,7 @@ const PROJECT_KEY='pnshar_last_project';
 let imgDataUrl=null, ocrText='';
 let cachedHistoryRecords=[];
 let historyChartInstance=[];
+let hasExportedThisSession=false;
 
 const $=id=>document.getElementById(id);
 const getSupabaseUrl=()=>localStorage.getItem(SUPABASE_URL_KEY)||'';
@@ -1401,6 +1407,7 @@ async function renderHistory(skipFetch){
   // filter sendiri dari cachedHistoryRecords, ini khusus untuk daftar kartu)
   const selectedInstForList=$('export-instrument-select')?$('export-instrument-select').value:'ALL';
   const recordsForList=(selectedInstForList==='ALL')?records:records.filter(r=>r.instrument===selectedInstForList);
+  $('delete-lock-hint').style.display=hasExportedThisSession?'none':'block';
 
   if(!recordsForList.length){
     area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data untuk alat ini.</p></div>';
@@ -1453,7 +1460,9 @@ async function renderHistory(skipFetch){
       html+='<span class="sample-tag">'+(r.sample||'?')+'</span>';
       html+='<span class="hist-date">'+(r.tanggal||'-')+'</span>';
       html+='<span class="hist-op">'+( r.operator||'-')+'</span>';
-      html+='<button class="row-del" onclick="delRecord(&quot;'+r.id+'&quot;,&quot;'+r.instrument+'&quot;)">&#10005;</button>';
+      const delDisabled=!hasExportedThisSession;
+      const delTitle=delDisabled?'Export data dulu sebelum bisa menghapus':'Hapus data ini';
+      html+='<button class="row-del" '+(delDisabled?'disabled':'')+' title="'+delTitle+'" onclick="delRecord(&quot;'+r.id+'&quot;,&quot;'+r.instrument+'&quot;)">&#10005;</button>';
       html+='</div>';
       html+='<div class="hist-values">';
       primaryFields.forEach(f=>{
@@ -1571,6 +1580,13 @@ function renderChart(){
 }
 
 async function delRecord(id,instrument){
+  if(!hasExportedThisSession){
+    toast('Export data dulu sebelum bisa menghapus');
+    return;
+  }
+  const confirmed=confirm('Yakin hapus? Pastikan data sudah di download dengan benar');
+  if(!confirmed)return;
+
   let records=loadLocal().filter(r=>r.id!==id);saveLocal(records);
   // Update cache & redraw INSTAN dari cache, tidak perlu tunggu network
   cachedHistoryRecords=cachedHistoryRecords.filter(r=>r.id!==id);
@@ -1780,6 +1796,9 @@ async function exportCSV(){
   btn.textContent='\u{1F4E4} Export & Download (Excel)';
   btn.disabled=false;
   $('export-hint').style.display='block';
+
+  hasExportedThisSession=true;
+  renderHistory(true); // redraw supaya tombol hapus langsung aktif tanpa perlu refresh manual
 }
 
 $('save-vision-btn').onclick=()=>{
