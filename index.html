@@ -87,6 +87,12 @@ button.btn{font-family:var(--sans);font-size:13px;padding:9px 13px;border-radius
 button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .history-list{display:flex;flex-direction:column;gap:12px;}
 .project-block{border:1px solid var(--line-s);border-radius:var(--r);margin-bottom:18px;overflow:hidden;background:var(--raised);}
+.project-block.archived{opacity:.65;}
+.project-block.archived .project-header{background:var(--ink-f);}
+.archived-badge{font-size:10px;font-weight:400;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:100px;margin-left:6px;vertical-align:middle;}
+.archive-toggle-bar{margin-bottom:14px;}
+.archive-toggle-bar button{width:100%;font-family:var(--sans);font-size:13px;padding:10px;border-radius:8px;border:1px dashed var(--line-s);background:var(--paper);color:var(--ink-s);cursor:pointer;}
+.archive-toggle-bar button:hover{background:var(--moss-p);}
 .project-header{background:var(--brand-blue);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .project-title{font-family:var(--mono);font-weight:700;font-size:14px;flex:1;min-width:140px;}
 .project-actions{display:flex;gap:6px;}
@@ -461,6 +467,8 @@ const ANTHROPIC_KEY='pnshar_anthropic_key';
 const PROJECT_KEY='pnshar_last_project';
 let imgDataUrl=null, ocrText='';
 let cachedHistoryRecords=[];
+let cachedArchivedProjects=new Set();
+let showArchivedProjects=false;
 let historyChartInstance=[];
 let hasExportedThisSession=false;
 
@@ -1459,6 +1467,17 @@ async function renderHistory(skipFetch){
       if(!res.ok)throw new Error('HTTP '+res.status);
       records=await res.json();
       dot.className='sync-dot ok';st.textContent='Terhubung ('+records.length+' data)';
+
+      // Muat status arsip juga (tabel terpisah, tidak fatal kalau gagal/belum ada)
+      try{
+        const resArc=await fetch(sbUrl+'/rest/v1/project_status?select=no_project&archived=eq.true', {
+          headers: supabaseHeaders()
+        });
+        if(resArc.ok){
+          const arcRows=await resArc.json();
+          cachedArchivedProjects=new Set(arcRows.map(r=>r.no_project));
+        }
+      }catch(e){ /* tabel project_status mungkin belum dibuat, abaikan */ }
     }catch(e){dot.className='sync-dot err';st.textContent='Gagal load database, tampil data lokal.';records=loadLocal();}
   } else {
     dot.className='sync-dot';st.textContent='Data lokal saja.';records=loadLocal();
@@ -1480,26 +1499,72 @@ async function renderHistory(skipFetch){
     byProject[proj].push(r);
   });
 
-  const sortedProjects=Object.keys(byProject).sort(compareProjects);
+  const allProjects=Object.keys(byProject).sort(compareProjects);
+  const activeProjects=allProjects.filter(p=>!cachedArchivedProjects.has(p));
+  const archivedProjects=allProjects.filter(p=>cachedArchivedProjects.has(p));
   const availableInstruments=Object.entries(INSTRUMENTS).filter(([k,v])=>v.available);
 
   let html='';
-  sortedProjects.forEach(proj=>{
-    html+=renderProjectBlock(proj, byProject[proj], availableInstruments);
+
+  if(archivedProjects.length>0){
+    html+='<div class="archive-toggle-bar">';
+    html+='<button onclick="toggleShowArchived()">'+
+      (showArchivedProjects?'&#128065; Sembunyikan project yang diarsipkan':'&#128193; Tampilkan '+archivedProjects.length+' project yang diarsipkan')+
+      '</button>';
+    html+='</div>';
+  }
+
+  const projectsToShow=showArchivedProjects?allProjects:activeProjects;
+
+  if(projectsToShow.length===0){
+    html+='<div class="empty-state"><div class="icon">&#128203;</div><p>Semua project sudah diarsipkan.</p></div>';
+  }
+
+  projectsToShow.forEach(proj=>{
+    const isArchived=cachedArchivedProjects.has(proj);
+    html+=renderProjectBlock(proj, byProject[proj], availableInstruments, isArchived);
   });
   area.innerHTML=html;
 }
 
-function renderProjectBlock(proj, projRecords, availableInstruments){
+function toggleShowArchived(){
+  showArchivedProjects=!showArchivedProjects;
+  renderHistory(true);
+}
+
+async function setProjectArchived(proj, archived){
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey){toast('Supabase belum terhubung');return;}
+
+  if(archived)cachedArchivedProjects.add(proj);
+  else cachedArchivedProjects.delete(proj);
+  renderHistory(true);
+  toast(archived?'Project diarsipkan':'Project dikembalikan dari arsip');
+
+  try{
+    await fetch(sbUrl+'/rest/v1/project_status?on_conflict=no_project', {
+      method:'POST',
+      headers: supabaseHeaders({'Prefer':'resolution=merge-duplicates,return=minimal'}),
+      body: JSON.stringify({no_project:proj, archived:archived, archived_at: archived?new Date().toISOString():null})
+    });
+  }catch(e){ toast('Gagal sync status arsip ke database'); }
+}
+
+function renderProjectBlock(proj, projRecords, availableInstruments, isArchived){
   const projAttr=proj.replace(/"/g,'&quot;');
   const safeId=cssSafeId(proj);
-  let html='<div class="project-block">';
+  let html='<div class="project-block'+(isArchived?' archived':'')+'">';
   html+='<div class="project-header">';
-  html+='<span class="project-title">'+proj+'</span>';
+  html+='<span class="project-title">'+proj+(isArchived?' <span class="archived-badge">Diarsipkan</span>':'')+'</span>';
   html+='<div class="project-actions">';
   html+='<button onclick="toggleProjectChart(this,&quot;'+projAttr+'&quot;)">&#128202; Grafik</button>';
   html+='<button onclick="exportProject(&quot;'+projAttr+'&quot;)">&#128228; Export</button>';
   html+='<button onclick="toggleProjectData(this,&quot;'+safeId+'&quot;)">&#128065; Hide</button>';
+  if(isArchived){
+    html+='<button onclick="setProjectArchived(&quot;'+projAttr+'&quot;,false)">&#128193; Kembalikan</button>';
+  } else {
+    html+='<button onclick="setProjectArchived(&quot;'+projAttr+'&quot;,true)">&#128230; Arsipkan</button>';
+  }
   html+='</div>';
   html+='</div>';
 
