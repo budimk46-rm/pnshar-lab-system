@@ -472,7 +472,7 @@ function initInstrument(){
     o.value=k;o.textContent=v.label;
     exportSel.appendChild(o);
   });
-  exportSel.onchange=renderChart;
+  exportSel.onchange=()=>renderHistory(true);
 }
 
 function updateInstrumentMode(){
@@ -1397,9 +1397,20 @@ async function renderHistory(skipFetch){
   }
   cachedHistoryRecords=records;
 
+  // Filter daftar kartu sesuai pilihan dropdown alat (chart & export sudah
+  // filter sendiri dari cachedHistoryRecords, ini khusus untuk daftar kartu)
+  const selectedInstForList=$('export-instrument-select')?$('export-instrument-select').value:'ALL';
+  const recordsForList=(selectedInstForList==='ALL')?records:records.filter(r=>r.instrument===selectedInstForList);
+
+  if(!recordsForList.length){
+    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data untuk alat ini.</p></div>';
+    renderChart();
+    return;
+  }
+
   // Group by instrument + no_project + code
   const groups={};
-  records.forEach(r=>{
+  recordsForList.forEach(r=>{
     const proj=r.no_project||'-';
     const gkey=(r.instrument||'?')+'_'+proj+'_'+(r.code||'?');
     if(!groups[gkey])groups[gkey]={instrument:r.instrument,no_project:proj,code:r.code,samples:[]};
