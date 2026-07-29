@@ -607,7 +607,7 @@ function supabaseHeaders(extra){
 }
 
 async function callGeminiOCR(visionKey, base64Image, mimeType, prompt, onStatus){
-  const maxRetries=1;
+  const maxRetries=0;
   const retryDelayMs=6000; // Gemini biasanya minta tunggu beberapa detik saja
 
   for(let attempt=0; attempt<=maxRetries; attempt++){
