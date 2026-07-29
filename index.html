@@ -238,9 +238,9 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       </div>
       <div class="field-row" style="margin-bottom:10px;">
         <div>
-          <label>Pilih alat (grafik &amp; export)</label>
-          <select id="export-instrument-select" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
-            <option value="ALL">Semua alat</option>
+          <label>Pilih No. Project (grafik &amp; export)</label>
+          <select id="project-select" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
+            <option value="ALL">Semua project</option>
           </select>
         </div>
       </div>
@@ -511,15 +511,10 @@ function initInstrument(){
   sel.onchange=updateInstrumentMode;
   updateInstrumentMode();
 
-  // Isi dropdown pilihan alat untuk export (hanya alat yang available)
-  const exportSel=$('export-instrument-select');
-  Object.entries(INSTRUMENTS).forEach(([k,v])=>{
-    if(!v.available)return;
-    const o=document.createElement('option');
-    o.value=k;o.textContent=v.label;
-    exportSel.appendChild(o);
-  });
-  exportSel.onchange=()=>renderHistory(true);
+  // Dropdown "Pilih No. Project" diisi dinamis di updateProjectDropdown()
+  // (dipanggil dari renderHistory setiap kali data dimuat, karena daftar
+  // project tergantung data yang ada, bukan daftar statis seperti alat)
+  $('project-select').onchange=()=>renderHistory(true);
 }
 
 function updateInstrumentMode(){
@@ -1416,6 +1411,26 @@ function updateManualCalc(){
 
 
 // HISTORY - grouped by Code
+function updateProjectDropdown(records){
+  const sel=$('project-select');
+  const prevValue=sel.value||'ALL';
+  const projects=[...new Set(records.map(r=>r.no_project||'-'))].sort();
+
+  sel.innerHTML='<option value="ALL">Semua project</option>';
+  projects.forEach(p=>{
+    const o=document.createElement('option');
+    o.value=p;o.textContent=p;
+    sel.appendChild(o);
+  });
+
+  // Pertahankan pilihan sebelumnya kalau masih ada di daftar baru
+  if(prevValue==='ALL'||projects.includes(prevValue)){
+    sel.value=prevValue;
+  } else {
+    sel.value='ALL';
+  }
+}
+
 async function renderHistory(skipFetch){
   const area=$('history-area'),dot=$('sync-dot'),st=$('sync-text');
   let records=[];
@@ -1443,15 +1458,16 @@ async function renderHistory(skipFetch){
     return;
   }
   cachedHistoryRecords=records;
+  updateProjectDropdown(records);
 
-  // Filter daftar kartu sesuai pilihan dropdown alat (chart & export sudah
-  // filter sendiri dari cachedHistoryRecords, ini khusus untuk daftar kartu)
-  const selectedInstForList=$('export-instrument-select')?$('export-instrument-select').value:'ALL';
-  const recordsForList=(selectedInstForList==='ALL')?records:records.filter(r=>r.instrument===selectedInstForList);
+  // Filter daftar kartu sesuai pilihan dropdown No. Project (chart & export
+  // sudah filter sendiri dari cachedHistoryRecords, ini khusus daftar kartu)
+  const selectedProjectForList=$('project-select')?$('project-select').value:'ALL';
+  const recordsForList=(selectedProjectForList==='ALL')?records:records.filter(r=>(r.no_project||'-')===selectedProjectForList);
   $('delete-lock-hint').style.display=hasExportedThisSession?'none':'block';
 
   if(!recordsForList.length){
-    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data untuk alat ini.</p></div>';
+    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data untuk project ini.</p></div>';
     renderChart();
     return;
   }
@@ -1597,7 +1613,7 @@ function drawBarChart(canvas, labels, data, label, unit){
 }
 
 function renderChart(){
-  const selectedInst=$('export-instrument-select').value;
+  const selectedProject=$('project-select').value;
   const chartSection=$('chart-section');
   const container=$('chart-container');
 
@@ -1606,45 +1622,52 @@ function renderChart(){
   historyChartInstance=[];
   container.innerHTML='';
 
-  const inst=INSTRUMENTS[selectedInst];
-  // Grafik Index HANYA untuk alat yang punya indexConfig
-  // (RCT, Bursting, Tearing, Tensile, Wet Tensile). Alat lain tidak
-  // ditampilkan grafiknya sama sekali, datanya tetap tersimpan seperti biasa.
-  const noChart=(selectedInst==='ALL')||!inst||!inst.available||!inst.indexConfig;
+  const projectFiltered=(selectedProject==='ALL')
+    ? cachedHistoryRecords
+    : cachedHistoryRecords.filter(r=>(r.no_project||'-')===selectedProject);
 
-  if(noChart){
+  if(!projectFiltered.length){
     chartSection.style.display='none';
     return;
   }
 
-  const filtered=cachedHistoryRecords.filter(r=>r.instrument===selectedInst);
-  if(!filtered.length){
-    chartSection.style.display='none';
-    return;
-  }
+  // Cek semua alat yang punya indexConfig (RCT, Bursting, Tearing, Tensile,
+  // Wet Tensile) -- untuk tiap alat yang PUNYA data di project ini, buat
+  // 1 chart. Alat yang tidak ada datanya di project ini otomatis dilewati.
+  const chartableEntries=Object.entries(INSTRUMENTS).filter(([k,v])=>v.available&&v.indexConfig);
+  let anyChartShown=false;
 
-  const cfg=inst.indexConfig;
-  const {labels, data, anyMatched}=computeIndexPerCode(filtered, cfg);
+  chartableEntries.forEach(([instKey, inst])=>{
+    const filtered=projectFiltered.filter(r=>r.instrument===instKey);
+    if(!filtered.length)return; // alat ini tidak ada datanya di project yang dipilih
 
-  chartSection.style.display='block';
+    const cfg=inst.indexConfig;
+    const {labels, data, anyMatched}=computeIndexPerCode(filtered, cfg);
+    anyChartShown=true;
 
-  if(!anyMatched){
-    container.innerHTML='<div style="background:var(--amber-p);border:1px solid var(--amber);border-radius:var(--r);padding:14px;font-size:13px;color:var(--ink-s);">'+
-      'Belum ada data Basis Weight \u2014 Coating yang cocok (No.Project + Code + Sample sama) untuk menghitung '+cfg.label+'. '+
-      'Pastikan data BW Coating untuk sample yang sama sudah diinput.</div>';
-    return;
-  }
+    const box=document.createElement('div');
+    box.style.cssText='background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px;';
 
-  const box=document.createElement('div');
-  box.style.cssText='background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px;';
-  box.innerHTML='<div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">'+
-    inst.label+' \u2014 '+cfg.label+' rata-rata per Code ('+cfg.unit+')</div>'+
-    '<canvas height="160"></canvas>';
-  container.appendChild(box);
+    if(!anyMatched){
+      box.innerHTML='<div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">'+
+        inst.label+' \u2014 '+cfg.label+'</div>'+
+        '<div style="background:var(--amber-p);border:1px solid var(--amber);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--ink-s);">'+
+        'Belum ada data Basis Weight \u2014 Coating yang cocok (No.Project + Code + Sample sama) untuk alat ini.</div>';
+      container.appendChild(box);
+      return;
+    }
 
-  const canvas=box.querySelector('canvas');
-  const chart=drawBarChart(canvas, labels, data, cfg.label, cfg.unit);
-  historyChartInstance.push(chart);
+    box.innerHTML='<div style="font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:700;margin-bottom:8px;">'+
+      inst.label+' \u2014 '+cfg.label+' rata-rata per Code ('+cfg.unit+')</div>'+
+      '<canvas height="160"></canvas>';
+    container.appendChild(box);
+
+    const canvas=box.querySelector('canvas');
+    const chart=drawBarChart(canvas, labels, data, cfg.label, cfg.unit);
+    historyChartInstance.push(chart);
+  });
+
+  chartSection.style.display=anyChartShown?'block':'none';
 }
 
 async function delRecord(id,instrument){
@@ -1844,15 +1867,18 @@ async function exportCSV(){
 
   btn.textContent='Menyiapkan file...';
   btn.disabled=true;
-  const records=await getAllRecordsGrouped();
-  if(!records.length){toast('Belum ada data');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
+  const allRecords=await getAllRecordsGrouped();
+  if(!allRecords.length){toast('Belum ada data');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
 
-  const selectedInst=$('export-instrument-select').value;
-  const wb=buildWorkbook(records, selectedInst);
-  if(!wb){toast('Belum ada data untuk alat ini');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
+  const selectedProject=$('project-select').value;
+  const records=(selectedProject==='ALL')?allRecords:allRecords.filter(r=>(r.no_project||'-')===selectedProject);
+  if(!records.length){toast('Belum ada data untuk project ini');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
+
+  const wb=buildWorkbook(records, 'ALL');
+  if(!wb){toast('Belum ada data untuk diexport');btn.textContent='\u{1F4E4} Export & Download (Excel)';btn.disabled=false;return;}
 
   const wbArrayBuffer=XLSX.write(wb,{bookType:'xlsx',type:'array'});
-  const namePart=selectedInst==='ALL'?'semua_alat':selectedInst.toLowerCase();
+  const namePart=selectedProject==='ALL'?'semua_project':selectedProject.toLowerCase();
   const filename='pnshar_lab_'+namePart+'_'+today()+'.xlsx';
   const blob=new Blob([wbArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 
