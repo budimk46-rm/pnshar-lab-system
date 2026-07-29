@@ -334,6 +334,7 @@ const INSTRUMENTS = {
     label:'Tensile Tester',
     primaryFields:[{key:'F',unit:'N'},{key:'S',unit:'kN/m'},{key:'I',unit:'N.m/g'},{key:'Z',unit:'J/m2'},{key:'Iz',unit:'mJ/g'},{key:'R',unit:'%'},{key:'Ls',unit:'km'},{key:'t',unit:'s'}],
     refFields:[],
+    historyPrimaryOverride:['F'],
     indexConfig:{
       sourceField:'F',
       formula:(raw,bwAfter)=>((raw/15)/bwAfter)*1000,
@@ -346,6 +347,7 @@ const INSTRUMENTS = {
     label:'Wet Tensile Tester',
     primaryFields:[{key:'F',unit:'N'},{key:'S',unit:'kN/m'},{key:'I',unit:'N.m/g'},{key:'Z',unit:'J/m2'},{key:'Iz',unit:'mJ/g'},{key:'R',unit:'%'},{key:'Ls',unit:'km'},{key:'t',unit:'s'}],
     refFields:[],
+    historyPrimaryOverride:['F'],
     indexConfig:{
       sourceField:'F',
       formula:(raw,bwAfter)=>((raw/15)/bwAfter)*1000,
@@ -1525,7 +1527,12 @@ function cssSafeId(str){
 
 function renderCodeGroupCards(records, instKey, inst){
   const primaryFields=inst.primaryFields||[];
-  const refFields=inst.refFields||[];
+  // Kalau instrumen punya historyPrimaryOverride (misal Tensile/Wet Tensile
+  // yang cuma perlu tampilkan F saja), pakai itu untuk tampilan riwayat.
+  // Data lengkap tetap tersimpan utuh di database, ini cuma soal tampilan.
+  const displayFields=inst.historyPrimaryOverride
+    ? primaryFields.filter(f=>inst.historyPrimaryOverride.includes(f.key))
+    : primaryFields;
 
   const groups={};
   records.forEach(r=>{
@@ -1540,11 +1547,11 @@ function renderCodeGroupCards(records, instKey, inst){
   sortedCodes.forEach(code=>{
     const samples=groups[code].slice().sort((a,b)=>(a.sample||'').localeCompare(b.sample||''));
     const avgs={};
-    primaryFields.forEach(f=>{
+    displayFields.forEach(f=>{
       const vals=samples.map(s=>s.nilai&&s.nilai[f.key]!=null?s.nilai[f.key]:null).filter(v=>v!==null);
       avgs[f.key]=vals.length>0?(vals.reduce((a,b)=>a+b,0)/vals.length):null;
     });
-    const avgStr=primaryFields.map(f=>f.key+'='+(avgs[f.key]!=null?avgs[f.key].toFixed(2):'-')+' '+f.unit).join(' | ');
+    const avgStr=displayFields.map(f=>f.key+'='+(avgs[f.key]!=null?avgs[f.key].toFixed(2):'-')+' '+f.unit).join(' | ');
 
     html+='<div class="code-group" style="margin-bottom:10px;">';
     html+='<div class="code-group-header">';
@@ -1553,12 +1560,12 @@ function renderCodeGroupCards(records, instKey, inst){
     html+='</div>';
     html+='<div class="sample-list">';
     samples.forEach(r=>{
-      html+=renderSampleCard(r, instKey, primaryFields, refFields);
+      html+=renderSampleCard(r, instKey, displayFields);
     });
     html+='</div>';
     if(samples.length>1){
       html+='<div class="avg-row"><span class="avg-label">Rata-rata</span>';
-      primaryFields.forEach(f=>{
+      displayFields.forEach(f=>{
         const v=avgs[f.key]!=null?avgs[f.key].toFixed(3):'-';
         html+='<span class="avg-val">'+f.key+' = '+v+' '+f.unit+'</span>';
       });
@@ -1570,7 +1577,7 @@ function renderCodeGroupCards(records, instKey, inst){
   return html;
 }
 
-function renderSampleCard(r, instKey, primaryFields, refFields){
+function renderSampleCard(r, instKey, displayFields){
   const delDisabled=!hasExportedThisSession;
   const delTitle=delDisabled?'Export data dulu sebelum bisa menghapus':'Hapus data ini';
   let html='<div class="hist-card" id="card-'+r.id+'">';
@@ -1582,13 +1589,9 @@ function renderSampleCard(r, instKey, primaryFields, refFields){
   html+='<button class="row-del" '+(delDisabled?'disabled':'')+' title="'+delTitle+'" onclick="delRecord(&quot;'+r.id+'&quot;,&quot;'+instKey+'&quot;)">&#10005;</button>';
   html+='</div>';
   html+='<div class="hist-values" id="values-'+r.id+'">';
-  primaryFields.forEach(f=>{
+  displayFields.forEach(f=>{
     const v=r.nilai&&r.nilai[f.key]!=null?r.nilai[f.key]:'-';
     html+='<div class="hv primary"><span class="hv-k">'+f.key+'</span><span class="hv-v">'+v+'</span><span class="hv-u">'+f.unit+'</span></div>';
-  });
-  refFields.forEach(f=>{
-    const v=r.nilai&&r.nilai[f.key]!=null?r.nilai[f.key]:'-';
-    html+='<div class="hv ref"><span class="hv-k">'+f.key+'</span><span class="hv-v">'+v+'</span><span class="hv-u">'+f.unit+'</span></div>';
   });
   html+='</div></div>';
   return html;
@@ -1604,7 +1607,10 @@ function startEditRecord(id){
   const container=document.getElementById('values-'+id);
   if(!container)return;
 
-  const allFields=[...(inst.primaryFields||[]),...(inst.refFields||[])];
+  const primaryFields=inst.primaryFields||[];
+  const allFields=inst.historyPrimaryOverride
+    ? primaryFields.filter(f=>inst.historyPrimaryOverride.includes(f.key))
+    : primaryFields;
   let html='';
   allFields.forEach(f=>{
     const v=record.nilai&&record.nilai[f.key]!=null?record.nilai[f.key]:'';
