@@ -338,6 +338,7 @@ const INSTRUMENTS = {
   CMT:{label:'CMT \u2014 Concora Medium Test',primaryFields:[{key:'F',unit:'N'}],refFields:[],available:true,sheet:'records_cmt'},
   TENSILE:{
     label:'Tensile Tester',
+    codeAsText:true,
     primaryFields:[{key:'F',unit:'N'},{key:'S',unit:'kN/m'},{key:'I',unit:'N.m/g'},{key:'Z',unit:'J/m2'},{key:'Iz',unit:'mJ/g'},{key:'R',unit:'%'},{key:'Ls',unit:'km'},{key:'t',unit:'s'}],
     refFields:[],
     historyPrimaryOverride:['F'],
@@ -351,6 +352,7 @@ const INSTRUMENTS = {
   },
   WET_TENSILE:{
     label:'Wet Tensile Tester',
+    codeAsText:true,
     primaryFields:[{key:'F',unit:'N'},{key:'S',unit:'kN/m'},{key:'I',unit:'N.m/g'},{key:'Z',unit:'J/m2'},{key:'Iz',unit:'mJ/g'},{key:'R',unit:'%'},{key:'Ls',unit:'km'},{key:'t',unit:'s'}],
     refFields:[],
     historyPrimaryOverride:['F'],
@@ -551,6 +553,18 @@ function updateInstrumentMode(){
   $('manual-entry-card').style.display=isManual?'block':'none';
   $('result-card').style.display='none';
   $('field-date').value=today();
+
+  // Beberapa alat (misal Tensile/Wet Tensile) kadang diisi nama produk,
+  // bukan angka urut -- jadi field Code/Trial-nya jadi teks bebas.
+  const codeInput=$('field-code');
+  if(inst&&inst.codeAsText){
+    codeInput.type='text';
+    codeInput.placeholder='contoh: 1 atau nama produk';
+  } else {
+    codeInput.type='number';
+    codeInput.min='1';
+    codeInput.placeholder='contoh: 1';
+  }
 
   if(isManual){
     buildManualFields(inst);
@@ -1208,7 +1222,7 @@ async function persistRecord(nilai, meta, resetUI, sampleLetterOverride, silent)
     id:'rec_'+Date.now()+'_'+sampleLetter,
     instrument:key,
     no_project:project,
-    code:parseInt(code),
+    code:code,
     sample:sampleLetter,
     tanggal:$('field-date').value||today(),
     operator:op,
@@ -1452,6 +1466,20 @@ function compareProjects(a,b){
   return String(a).localeCompare(String(b));
 }
 
+// Bandingkan 2 nilai Code untuk sorting -- aman untuk kode numerik (1,2,3)
+// maupun kode teks (misal nama produk untuk Tensile). Kode numerik selalu
+// diurutkan lebih dulu secara angka, kode teks diurutkan alfabetis di belakangnya.
+function isNumericCode(v){
+  return /^\s*-?\d+(\.\d+)?\s*$/.test(String(v));
+}
+function compareCodesForSort(a,b){
+  const aNum=isNumericCode(a), bNum=isNumericCode(b);
+  if(aNum && bNum)return parseFloat(a)-parseFloat(b);
+  if(aNum)return -1;
+  if(bNum)return 1;
+  return String(a).localeCompare(String(b));
+}
+
 async function renderHistory(skipFetch){
   const area=$('history-area'),dot=$('sync-dot'),st=$('sync-text');
   let records=[];
@@ -1616,7 +1644,7 @@ function renderCodeGroupCards(records, instKey, inst){
     groups[code].push(r);
   });
 
-  const sortedCodes=Object.keys(groups).sort((a,b)=>(parseFloat(a)||0)-(parseFloat(b)||0));
+  const sortedCodes=Object.keys(groups).sort(compareCodesForSort);
 
   let html='';
   sortedCodes.forEach(code=>{
@@ -1830,7 +1858,7 @@ function computeIndexPerCode(filtered, indexConfig){
   const groupKeys=Object.keys(byGroup).sort((a,b)=>{
     const ga=byGroup[a],gb=byGroup[b];
     if(ga.project!==gb.project)return String(ga.project).localeCompare(String(gb.project));
-    return parseFloat(ga.code)-parseFloat(gb.code);
+    return compareCodesForSort(ga.code,gb.code);
   });
   const labels=groupKeys.map(k=>'Code '+byGroup[k].code);
   const codes=groupKeys.map(k=>byGroup[k].code);
@@ -1920,7 +1948,7 @@ function buildPivotSheetData(instKey, records, fieldKey, unit){
   const groupKeys=Object.keys(byGroup).sort((a,b)=>{
     const ga=byGroup[a],gb=byGroup[b];
     if(ga.project!==gb.project)return String(ga.project).localeCompare(String(gb.project));
-    return parseFloat(ga.code)-parseFloat(gb.code);
+    return compareCodesForSort(ga.code,gb.code);
   });
 
   const header=['No. Project','Code',...letters.map(l=>l.toLowerCase()),'AVG'];
@@ -1929,7 +1957,7 @@ function buildPivotSheetData(instKey, records, fieldKey, unit){
     const vals=letters.map(l=>g.samples[l]!=null?g.samples[l]:'');
     const numeric=vals.filter(v=>v!=='').map(v=>parseFloat(v));
     const avg=numeric.length>0?(numeric.reduce((a,b)=>a+b,0)/numeric.length):'';
-    return [g.project,parseFloat(g.code),...vals,avg!==''?Math.round(avg*100)/100:''];
+    return [g.project,g.code,...vals,avg!==''?Math.round(avg*100)/100:''];
   });
 
   return [[instKey+' ('+(unit||'')+')'],header,...rows];
@@ -1940,7 +1968,7 @@ function buildFlatSheetData(instKey, records, allFieldKeys){
   if(!filtered.length)return null;
   const header=['No. Project','Code','Sample','Tanggal','Operator',...allFieldKeys,'Waktu Input'];
   const rows=filtered
-    .sort((a,b)=>String(a.no_project).localeCompare(String(b.no_project))||(a.code-b.code)||String(a.sample).localeCompare(String(b.sample)))
+    .sort((a,b)=>String(a.no_project).localeCompare(String(b.no_project))||compareCodesForSort(a.code,b.code)||String(a.sample).localeCompare(String(b.sample)))
     .map(r=>[
       r.no_project||'',r.code||'',r.sample||'',r.tanggal||'',r.operator||'',
       ...allFieldKeys.map(k=>r.nilai&&r.nilai[k]!=null?r.nilai[k]:''),
@@ -1972,7 +2000,7 @@ function buildBWCoatingSheetData(records){
   const groupKeys=Object.keys(byGroup).sort((a,b)=>{
     const ga=byGroup[a],gb=byGroup[b];
     if(ga.project!==gb.project)return String(ga.project).localeCompare(String(gb.project));
-    return parseFloat(ga.code)-parseFloat(gb.code);
+    return compareCodesForSort(ga.code,gb.code);
   });
 
   const beforeCols=letters.length+1; // +Avg
@@ -1995,7 +2023,7 @@ function buildBWCoatingSheetData(records){
     const afterAvg=afterNum.length?afterNum.reduce((a,b)=>a+b,0)/afterNum.length:'';
     const coatedWeight=(beforeAvg!==''&&afterAvg!=='')?Math.round((afterAvg-beforeAvg)*100)/100:'';
     return [
-      g.project, g.tanggal||'', g.operator||'', parseFloat(g.code),
+      g.project, g.tanggal||'', g.operator||'', g.code,
       ...beforeVals, beforeAvg!==''?Math.round(beforeAvg*100)/100:'',
       ...afterVals, afterAvg!==''?Math.round(afterAvg*100)/100:'',
       coatedWeight
