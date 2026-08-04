@@ -144,6 +144,18 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .avg-row .avg-label{font-family:var(--mono);font-size:11px;color:var(--amber);text-transform:uppercase;font-weight:700;}
 .avg-row .avg-val{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--ink);}
 .empty-state{text-align:center;padding:40px 20px;color:var(--ink-f);}
+.sbl-list{display:flex;flex-direction:column;gap:10px;}
+.sbl-card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--raised);}
+.sbl-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+.sbl-project-no{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--brand-blue);}
+.sbl-status-badge{font-size:10px;font-weight:700;color:#fff;padding:3px 9px;border-radius:100px;text-transform:uppercase;white-space:nowrap;}
+.sbl-seg-app{font-size:12px;color:var(--ink-s);font-weight:600;margin-bottom:4px;}
+.sbl-objective{font-size:13px;color:var(--ink);margin-bottom:8px;line-height:1.4;}
+.sbl-meta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px;}
+.sbl-meta-grid > div{background:var(--paper);border-radius:6px;padding:5px 7px;}
+.sbl-meta-k{display:block;font-family:var(--mono);font-size:8px;text-transform:uppercase;color:var(--ink-f);}
+.sbl-meta-v{display:block;font-size:12px;color:var(--ink);font-weight:600;}
+.sbl-product,.sbl-lims{font-size:11px;color:var(--ink-f);margin-top:4px;}
 .empty-state .icon{font-size:32px;margin-bottom:10px;}
 .empty-state p{margin:4px 0;font-size:13px;}
 .toolbar{display:flex;gap:8px;margin-bottom:14px;}
@@ -282,6 +294,27 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
         &#128274; Tombol hapus (&#10005;) belum aktif — klik <b>Export Semua Data</b> di atas dulu untuk membuat backup, baru tombol hapus bisa dipakai.
       </div>
       <div id="history-area" style="margin-top:12px;"></div>
+    </div>
+  </section>
+
+  <section class="panel" data-panel="sblproject">
+    <div class="card">
+      <div class="sync-status" id="sbl-sync-status">
+        <span class="sync-dot" id="sbl-sync-dot"></span>
+        <span id="sbl-sync-text">Memeriksa koneksi...</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn" id="sbl-refresh-btn">&#8635; Muat ulang</button>
+      </div>
+      <div class="field-row" style="margin-bottom:10px;">
+        <div>
+          <label>Pilih Tahun</label>
+          <select id="sbl-year-select" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
+            <option value="ALL">Semua tahun</option>
+          </select>
+        </div>
+      </div>
+      <div id="sbl-project-area" style="margin-top:12px;"></div>
     </div>
   </section>
 
@@ -471,6 +504,7 @@ let imgDataUrl=null, ocrText='';
 let cachedHistoryRecords=[];
 let cachedArchivedProjects=new Set();
 let showArchivedProjects=false;
+let cachedSblProjects=[];
 let historyChartInstance=[];
 let hasExportedThisSession=false;
 
@@ -505,7 +539,7 @@ function nextSample(cur){const s='ABCDE';const i=s.indexOf(cur);return i<4?s[i+1
 
 function initTabs(){
   const tabs=$('tabs');
-  [{id:'input',lbl:'Input baru'},{id:'history',lbl:'Riwayat'},{id:'settings',lbl:'Pengaturan'}].forEach((d,i)=>{
+  [{id:'input',lbl:'Input baru'},{id:'history',lbl:'Riwayat'},{id:'sblproject',lbl:'SBL-Project'},{id:'settings',lbl:'Pengaturan'}].forEach((d,i)=>{
     const b=document.createElement('button');
     b.textContent=d.lbl;b.className=i===0?'active':'';
     b.onclick=()=>switchTab(d.id);b.dataset.tab=d.id;tabs.appendChild(b);
@@ -515,6 +549,7 @@ function switchTab(id){
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===id));
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
   if(id==='history')renderHistory();
+  if(id==='sblproject')renderSblProjects();
   if(id==='settings'){
     $('supabase-url').value=getSupabaseUrl();
     $('supabase-key').value=getSupabaseKey();
@@ -1889,6 +1924,94 @@ function drawBarChart(canvas, labels, data, codes, label, unit){
   });
 }
 
+// ==== SBL-Project (master data project, terpisah dari data hasil uji) ====
+async function renderSblProjects(){
+  const dot=$('sbl-sync-dot'), st=$('sbl-sync-text');
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  let projects=[];
+
+  if(sbUrl && sbKey){
+    st.textContent='Memuat data...';
+    try{
+      const res=await fetch(sbUrl+'/rest/v1/sbl_projects?select=*&order=project_no.asc', {
+        headers: supabaseHeaders()
+      });
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      projects=await res.json();
+      dot.className='sync-dot ok';
+      st.textContent='Terhubung ('+projects.length+' project)';
+    }catch(e){
+      dot.className='sync-dot err';
+      st.textContent='Gagal load data (tabel sbl_projects mungkin belum dibuat).';
+    }
+  } else {
+    dot.className='sync-dot';
+    st.textContent='Supabase belum terhubung.';
+  }
+
+  cachedSblProjects=projects;
+
+  // Isi dropdown tahun secara dinamis dari data yang ada
+  const yearSel=$('sbl-year-select');
+  const prevYear=yearSel.value||'ALL';
+  const years=[...new Set(projects.map(p=>p.tahun))].filter(y=>y!=null).sort((a,b)=>b-a);
+  yearSel.innerHTML='<option value="ALL">Semua tahun</option>'+
+    years.map(y=>'<option value="'+y+'">'+y+'</option>').join('');
+  yearSel.value=(prevYear==='ALL'||years.map(String).includes(prevYear))?prevYear:'ALL';
+
+  renderSblProjectList();
+}
+
+function renderSblProjectList(){
+  const area=$('sbl-project-area');
+  const selectedYear=$('sbl-year-select').value;
+  const filtered=selectedYear==='ALL'?cachedSblProjects:cachedSblProjects.filter(p=>String(p.tahun)===selectedYear);
+
+  if(!filtered.length){
+    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data project.</p></div>';
+    return;
+  }
+
+  let html='<div class="sbl-list">';
+  filtered.forEach(p=>{
+    html+=renderSblCard(p);
+  });
+  html+='</div>';
+  area.innerHTML=html;
+}
+
+function sblStatusColor(status){
+  const s=(status||'').toUpperCase();
+  if(s==='COMPLETED')return '#2a7a3f';
+  if(s==='ON GOING')return '#14459e';
+  if(s==='QUEUE')return '#b8893a';
+  if(s==='CANCEL')return '#a8542e';
+  return '#8a9590';
+}
+
+function renderSblCard(p){
+  const color=sblStatusColor(p.status);
+  let html='<div class="sbl-card">';
+  html+='<div class="sbl-card-top">';
+  html+='<span class="sbl-project-no">'+(p.project_no||'-')+'</span>';
+  html+='<span class="sbl-status-badge" style="background:'+color+';">'+(p.status||'-')+'</span>';
+  html+='</div>';
+  html+='<div class="sbl-seg-app">'+(p.segment||'-')+' &middot; '+(p.application||'-')+'</div>';
+  if(p.objective)html+='<div class="sbl-objective">'+p.objective+'</div>';
+  html+='<div class="sbl-meta-grid">';
+  html+='<div><span class="sbl-meta-k">Requestor</span><span class="sbl-meta-v">'+(p.requestor||'-')+'</span></div>';
+  html+='<div><span class="sbl-meta-k">Country</span><span class="sbl-meta-v">'+(p.country||'-')+'</span></div>';
+  html+='<div><span class="sbl-meta-k">Sample Qty</span><span class="sbl-meta-v">'+(p.sample_qty!=null?p.sample_qty:'-')+'</span></div>';
+  html+='<div><span class="sbl-meta-k">Type</span><span class="sbl-meta-v">'+(p.type_labwork||'-')+'</span></div>';
+  html+='<div><span class="sbl-meta-k">Qty Analysis</span><span class="sbl-meta-v">'+(p.qty_analysis!=null?p.qty_analysis:'-')+'</span></div>';
+  html+='<div><span class="sbl-meta-k">Bulan</span><span class="sbl-meta-v">'+(p.bulan||'-')+'</span></div>';
+  html+='</div>';
+  if(p.sample_product_name)html+='<div class="sbl-product">Produk: '+p.sample_product_name+'</div>';
+  if(p.lims_no)html+='<div class="sbl-lims">LIMS: '+p.lims_no+'</div>';
+  html+='</div>';
+  return html;
+}
+
 async function delRecord(id,instrument){
   if(!hasExportedThisSession){
     toast('Export data dulu sebelum bisa menghapus');
@@ -2157,6 +2280,8 @@ $('read-btn').onclick=readReceipt;
 $('save-btn').onclick=saveRecord;
 $('save-manual-btn').onclick=saveManualRecord;
 $('refresh-btn').onclick=()=>renderHistory(false);
+$('sbl-refresh-btn').onclick=()=>renderSblProjects();
+$('sbl-year-select').onchange=()=>renderSblProjectList();
 $('export-csv').onclick=exportCSV;
 
 // Setup field No. Project: load nilai terakhir, auto-uppercase, auto-simpan
