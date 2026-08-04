@@ -1925,6 +1925,44 @@ function drawBarChart(canvas, labels, data, codes, label, unit){
 }
 
 // ==== SBL-Project (master data project, terpisah dari data hasil uji) ====
+
+// Urutan alur proses status project (dipakai untuk referensi & sorting status)
+const SBL_STATUS_ORDER = ['QUEUE', 'ON GOING', 'COMPLETED', 'CANCEL'];
+
+// Parse format Project No., misal "SBL-LT124/BAC-2511":
+//   SBL   = lokasi lab (Surabaya) -- JKL/SHL belum ditampilkan untuk saat ini
+//   LT    = Lab Type Work
+//   124   = nomor urut project
+//   BAC   = kode aplikasi project
+//   25    = tahun (2025)
+//   11    = bulan (November)
+function parseSblProjectNo(projectNo){
+  const m=String(projectNo||'').match(/^([A-Z]{3})-([A-Z]{2})(\d+)\/([A-Z]+)-(\d{2})(\d{2})$/);
+  if(!m)return null;
+  return {
+    lokasi:m[1],
+    tipe:m[2],
+    nomorUrut:parseInt(m[3],10),
+    aplikasi:m[4],
+    tahun:2000+parseInt(m[5],10),
+    bulan:parseInt(m[6],10)
+  };
+}
+
+// Urutkan berdasarkan tahun -> bulan -> nomor urut project (semua di-parse
+// dari kode project itu sendiri, bukan dari kolom tahun/bulan terpisah)
+function compareSblProjects(a,b){
+  const pa=parseSblProjectNo(a.project_no), pb=parseSblProjectNo(b.project_no);
+  if(pa && pb){
+    if(pa.tahun!==pb.tahun)return pa.tahun-pb.tahun;
+    if(pa.bulan!==pb.bulan)return pa.bulan-pb.bulan;
+    return pa.nomorUrut-pb.nomorUrut;
+  }
+  if(pa)return -1;
+  if(pb)return 1;
+  return String(a.project_no).localeCompare(String(b.project_no));
+}
+
 async function renderSblProjects(){
   const dot=$('sbl-sync-dot'), st=$('sbl-sync-text');
   const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
@@ -1965,7 +2003,16 @@ async function renderSblProjects(){
 function renderSblProjectList(){
   const area=$('sbl-project-area');
   const selectedYear=$('sbl-year-select').value;
-  const filtered=selectedYear==='ALL'?cachedSblProjects:cachedSblProjects.filter(p=>String(p.tahun)===selectedYear);
+  let filtered=selectedYear==='ALL'?cachedSblProjects:cachedSblProjects.filter(p=>String(p.tahun)===selectedYear);
+
+  // Hanya tampilkan project lokasi SBL (Surabaya) untuk saat ini --
+  // JKL (Jakarta) dan SHL (Shanghai) belum perlu ditampilkan
+  filtered=filtered.filter(p=>{
+    const parsed=parseSblProjectNo(p.project_no);
+    return !parsed || parsed.lokasi==='SBL';
+  });
+
+  filtered=filtered.slice().sort(compareSblProjects);
 
   if(!filtered.length){
     area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data project.</p></div>';
