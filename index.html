@@ -156,6 +156,10 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sbl-meta-k{display:block;font-family:var(--mono);font-size:8px;text-transform:uppercase;color:var(--ink-f);}
 .sbl-meta-v{display:block;font-size:12px;color:var(--ink);font-weight:600;}
 .sbl-product,.sbl-lims{font-size:11px;color:var(--ink-f);margin-top:4px;}
+.sbl-card-actions{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);}
+.sbl-card-actions button{flex:1;font-size:12px;padding:8px;}
+.sbl-del-btn{color:var(--rust);border-color:var(--rust-p);}
+.sbl-del-btn:hover{background:var(--rust-p);}
 .empty-state .icon{font-size:32px;margin-bottom:10px;}
 .empty-state p{margin:4px 0;font-size:13px;}
 .toolbar{display:flex;gap:8px;margin-bottom:14px;}
@@ -305,6 +309,11 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       </div>
       <div class="toolbar">
         <button class="btn" id="sbl-refresh-btn">&#8635; Muat ulang</button>
+        <button class="btn-primary" id="sbl-new-btn" style="flex:1;">&#10133; New Project</button>
+      </div>
+      <div id="sbl-new-form-card" class="card" style="display:none;margin-top:12px;background:var(--paper);">
+        <h2 style="margin-bottom:12px;">Project Baru</h2>
+        <div id="sbl-new-form"></div>
       </div>
       <div class="field-row" style="margin-bottom:10px;">
         <div>
@@ -1929,6 +1938,26 @@ function drawBarChart(canvas, labels, data, codes, label, unit){
 // Urutan alur proses status project (dipakai untuk referensi & sorting status)
 const SBL_STATUS_ORDER = ['QUEUE', 'ON GOING', 'COMPLETED', 'CANCEL'];
 
+// Field form "New Project" -- Monthly Report sengaja TIDAK dimasukkan
+// (itu kolom rekap otomatis, bukan input manual per-project)
+const SBL_FORM_FIELDS = [
+  {key:'project_no', label:'Project No.', type:'text', required:true, placeholder:'SBL-LT124/BAC-2511', hint:'Format: SBL-[Tipe][NoUrut]/[Aplikasi]-[YYMM], misal SBL-LT124/BAC-2511'},
+  {key:'lims_no', label:'LIMS No.', type:'text', placeholder:'LIMS-SBL-2512-0026'},
+  {key:'segment', label:'Segment', type:'select', options:['PAPER','PULP','WATER MANAGEMENT','FIBER TECHNOLOGY','SURFACE TECHNOLOGY','OPERATIONAL SUPPORT'], required:true},
+  {key:'application', label:'Application', type:'text', placeholder:'contoh: BAC', required:true},
+  {key:'objective', label:'Objective', type:'textarea', required:true},
+  {key:'division', label:'Division', type:'select', options:['TECH&DEV','SALES','QA/QC'], required:true},
+  {key:'customer', label:'Customer', type:'text'},
+  {key:'requestor', label:'Requestor', type:'text', required:true, placeholder:'Nama requestor'},
+  {key:'approver', label:'Approver', type:'text'},
+  {key:'country', label:'Country', type:'text', required:true},
+  {key:'sample_qty', label:'Sample Qty', type:'number'},
+  {key:'status', label:'Status', type:'select', options:SBL_STATUS_ORDER, default:'QUEUE', required:true},
+  {key:'type_labwork', label:'Type of Labwork', type:'select', options:['LAB TRIAL','LAB ANALYSIS','LAB QA/QC','LAB QC-WH SBY'], required:true},
+  {key:'qty_analysis', label:'Qty Analysis', type:'number'},
+  {key:'sample_product_name', label:'Sample Product Name', type:'textarea'}
+];
+
 // Parse format Project No., misal "SBL-LT124/BAC-2511":
 //   SBL   = lokasi lab (Surabaya) -- JKL/SHL belum ditampilkan untuk saat ini
 //   LT    = Lab Type Work
@@ -1961,6 +1990,63 @@ function compareSblProjects(a,b){
   if(pa)return -1;
   if(pb)return 1;
   return String(a.project_no).localeCompare(String(b.project_no));
+}
+
+function buildSblNewForm(){
+  const container=$('sbl-new-form');
+  let html=renderSblFormFields(null, false);
+  html+='<div style="display:flex;gap:8px;margin-top:16px;"><button class="btn-primary" id="sbl-save-btn" style="flex:1;">Simpan Project</button><button class="btn" id="sbl-cancel-btn">Batal</button></div>';
+  container.innerHTML=html;
+
+  $('sbl-save-btn').onclick=saveSblProject;
+  $('sbl-cancel-btn').onclick=()=>{ $('sbl-new-form-card').style.display='none'; };
+}
+
+async function saveSblProject(){
+  const inputs=document.querySelectorAll('.sbl-form-input');
+  const data={};
+  inputs.forEach(inp=>{
+    const key=inp.dataset.key;
+    const val=inp.value.trim();
+    data[key]=val||null;
+  });
+
+  const missing=SBL_FORM_FIELDS.filter(f=>f.required && !data[f.key]);
+  if(missing.length){
+    toast('Isi dulu: '+missing.map(f=>f.label).join(', '));
+    return;
+  }
+
+  const parsed=parseSblProjectNo(data.project_no);
+  if(!parsed){
+    toast('Format Project No. tidak sesuai pola SBL-XX###/XXX-YYMM');
+    return;
+  }
+
+  data.sample_qty=data.sample_qty?parseInt(data.sample_qty,10):null;
+  data.qty_analysis=data.qty_analysis?parseInt(data.qty_analysis,10):null;
+  data.tahun=parsed.tahun;
+  data.bulan=parsed.bulan;
+
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey){toast('Supabase belum terhubung');return;}
+
+  try{
+    const res=await fetch(sbUrl+'/rest/v1/sbl_projects?on_conflict=project_no', {
+      method:'POST',
+      headers: supabaseHeaders({'Prefer':'resolution=merge-duplicates,return=minimal'}),
+      body: JSON.stringify(data)
+    });
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      throw new Error(err.message||('HTTP '+res.status));
+    }
+    toast('Project berhasil disimpan \u2713');
+    $('sbl-new-form-card').style.display='none';
+    renderSblProjects();
+  }catch(e){
+    toast('Gagal simpan: '+e.message);
+  }
 }
 
 async function renderSblProjects(){
@@ -2038,7 +2124,9 @@ function sblStatusColor(status){
 
 function renderSblCard(p){
   const color=sblStatusColor(p.status);
-  let html='<div class="sbl-card">';
+  const projAttr=String(p.project_no).replace(/"/g,'&quot;');
+  const safeId=cssSafeId(p.project_no);
+  let html='<div class="sbl-card" id="sbl-card-'+safeId+'">';
   html+='<div class="sbl-card-top">';
   html+='<span class="sbl-project-no">'+(p.project_no||'-')+'</span>';
   html+='<span class="sbl-status-badge" style="background:'+color+';">'+(p.status||'-')+'</span>';
@@ -2055,8 +2143,106 @@ function renderSblCard(p){
   html+='</div>';
   if(p.sample_product_name)html+='<div class="sbl-product">Produk: '+p.sample_product_name+'</div>';
   if(p.lims_no)html+='<div class="sbl-lims">LIMS: '+p.lims_no+'</div>';
+  html+='<div class="sbl-card-actions">';
+  html+='<button class="btn" onclick="startEditSblProject(&quot;'+projAttr+'&quot;)">&#9998; Edit</button>';
+  html+='<button class="btn sbl-del-btn" onclick="deleteSblProject(&quot;'+projAttr+'&quot;)">&#10005; Hapus</button>';
+  html+='</div>';
+  html+='<div class="sbl-edit-container" id="sbl-edit-'+safeId+'" style="display:none;"></div>';
   html+='</div>';
   return html;
+}
+
+function renderSblFormFields(prefillData, isEdit){
+  let html='';
+  SBL_FORM_FIELDS.forEach(f=>{
+    const rawVal=prefillData&&prefillData[f.key]!=null?prefillData[f.key]:'';
+    const readonly=isEdit&&f.key==='project_no';
+    html+='<div class="field-row" style="margin-top:10px;"><div style="width:100%;">';
+    html+='<label>'+f.label+(f.required?' *':'')+(readonly?' (tidak bisa diubah)':'')+'</label>';
+    if(f.type==='select'){
+      const opts=f.options.map(o=>'<option value="'+o+'"'+(String(rawVal)===o?' selected':(!rawVal&&f.default===o?' selected':''))+'>'+o+'</option>').join('');
+      html+='<select class="sbl-form-input" data-key="'+f.key+'" '+(readonly?'disabled':'')+' style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;background:var(--raised);color:var(--ink);"><option value="">-- Pilih --</option>'+opts+'</select>';
+    } else if(f.type==='textarea'){
+      html+='<textarea class="sbl-form-input" data-key="'+f.key+'" rows="2" placeholder="'+(f.placeholder||'')+'" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;background:var(--raised);color:var(--ink);">'+(rawVal||'')+'</textarea>';
+    } else {
+      html+='<input type="'+f.type+'" class="sbl-form-input" data-key="'+f.key+'" value="'+(rawVal||'')+'" '+(readonly?'readonly':'')+' placeholder="'+(f.placeholder||'')+'" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;background:'+(readonly?'var(--paper)':'var(--raised)')+';color:var(--ink);">';
+    }
+    if(f.hint)html+='<p class="help" style="margin-top:4px;">'+f.hint+'</p>';
+    html+='</div></div>';
+  });
+  return html;
+}
+
+function startEditSblProject(projectNo){
+  const p=cachedSblProjects.find(x=>x.project_no===projectNo);
+  if(!p)return;
+  const container=document.getElementById('sbl-edit-'+cssSafeId(projectNo));
+  if(!container)return;
+
+  let html=renderSblFormFields(p, true);
+  html+='<div style="display:flex;gap:8px;margin-top:16px;">'+
+    '<button class="btn-primary" onclick="saveEditSblProject(&quot;'+projectNo.replace(/"/g,'&quot;')+'&quot;)" style="flex:1;">Simpan Perubahan</button>'+
+    '<button class="btn" onclick="renderSblProjectList()">Batal</button></div>';
+  container.innerHTML=html;
+  container.style.display='block';
+  container.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function saveEditSblProject(projectNo){
+  const container=document.getElementById('sbl-edit-'+cssSafeId(projectNo));
+  const inputs=container.querySelectorAll('.sbl-form-input');
+  const data={};
+  inputs.forEach(inp=>{
+    const key=inp.dataset.key;
+    const val=inp.value.trim();
+    data[key]=val||null;
+  });
+  data.project_no=projectNo; // tidak berubah, readonly saat edit
+
+  const missing=SBL_FORM_FIELDS.filter(f=>f.required && !data[f.key]);
+  if(missing.length){
+    toast('Isi dulu: '+missing.map(f=>f.label).join(', '));
+    return;
+  }
+
+  data.sample_qty=data.sample_qty?parseInt(data.sample_qty,10):null;
+  data.qty_analysis=data.qty_analysis?parseInt(data.qty_analysis,10):null;
+
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey){toast('Supabase belum terhubung');return;}
+
+  try{
+    const res=await fetch(sbUrl+'/rest/v1/sbl_projects?project_no=eq.'+encodeURIComponent(projectNo), {
+      method:'PATCH',
+      headers: supabaseHeaders({'Prefer':'return=minimal'}),
+      body: JSON.stringify(data)
+    });
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      throw new Error(err.message||('HTTP '+res.status));
+    }
+    toast('Project berhasil diperbarui \u2713');
+    renderSblProjects();
+  }catch(e){
+    toast('Gagal simpan: '+e.message);
+  }
+}
+
+async function deleteSblProject(projectNo){
+  const confirmed=confirm('Yakin hapus project '+projectNo+'? Tindakan ini tidak bisa dibatalkan.');
+  if(!confirmed)return;
+
+  cachedSblProjects=cachedSblProjects.filter(p=>p.project_no!==projectNo);
+  renderSblProjectList();
+  toast('Project dihapus');
+
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(sbUrl && sbKey){
+    fetch(sbUrl+'/rest/v1/sbl_projects?project_no=eq.'+encodeURIComponent(projectNo), {
+      method:'DELETE',
+      headers: supabaseHeaders()
+    }).catch(()=>{ toast('Gagal sync hapus ke database'); });
+  }
 }
 
 async function delRecord(id,instrument){
@@ -2328,6 +2514,15 @@ $('save-btn').onclick=saveRecord;
 $('save-manual-btn').onclick=saveManualRecord;
 $('refresh-btn').onclick=()=>renderHistory(false);
 $('sbl-refresh-btn').onclick=()=>renderSblProjects();
+$('sbl-new-btn').onclick=()=>{
+  const card=$('sbl-new-form-card');
+  const isHidden=card.style.display==='none';
+  card.style.display=isHidden?'block':'none';
+  if(isHidden){
+    buildSblNewForm();
+    card.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+};
 $('sbl-year-select').onchange=()=>renderSblProjectList();
 $('export-csv').onclick=exportCSV;
 
