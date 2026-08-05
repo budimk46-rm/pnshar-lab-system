@@ -14,6 +14,7 @@
 <link rel="icon" type="image/png" href="./icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 :root{
   --ink:#1a2420;--ink-s:#4a5550;--ink-f:#8a9590;
@@ -323,7 +324,72 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
           </select>
         </div>
       </div>
+      <div class="toolbar" style="margin-bottom:10px;">
+        <button class="btn" id="sbl-export-btn" style="flex:1;">&#128228; Download Excel (Tahun Ini + Pending Tahun Lalu)</button>
+      </div>
       <div id="sbl-project-area" style="margin-top:12px;"></div>
+    </div>
+  </section>
+
+  <section class="panel" data-panel="meetingreport">
+    <div class="card">
+      <div class="toolbar">
+        <button class="btn" id="mr-download-btn" style="flex:1;">&#128247; Download sebagai Gambar</button>
+      </div>
+      <div class="field-row" style="margin-top:10px;">
+        <div>
+          <label>Jenis Periode</label>
+          <select id="mr-period-type" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
+            <option value="monthly">Monthly</option>
+            <option value="semester">Half Year (Semester)</option>
+            <option value="yearly">A Year</option>
+          </select>
+        </div>
+      </div>
+      <div id="mr-period-picker" class="field-row" style="margin-top:10px;"></div>
+    </div>
+
+    <div id="mr-report-content">
+      <div class="card">
+        <h2 id="mr-report-title" style="margin-bottom:4px;">Laporan</h2>
+        <p class="help" id="mr-report-subtitle"></p>
+      </div>
+
+      <div class="card">
+        <h2>Analysis Request by Type of Lab Work</h2>
+        <canvas id="mr-chart-typelab" height="180"></canvas>
+      </div>
+      <div class="card">
+        <h2>Analysis Request by Country</h2>
+        <canvas id="mr-chart-country" height="180"></canvas>
+      </div>
+      <div class="card">
+        <h2>Total Number of Analysis Request (by Status)</h2>
+        <canvas id="mr-chart-status" height="180"></canvas>
+      </div>
+      <div class="card">
+        <h2>Analysis Request by Application</h2>
+        <canvas id="mr-chart-application" height="180"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Work Plan (Project On Going)</h2>
+        <div id="mr-workplan-area" style="overflow-x:auto;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Inventory Update</h2>
+        <div id="mr-inventory-area"></div>
+        <button class="btn" id="mr-add-inventory-btn" style="margin-top:10px;width:100%;">&#10133; Tambah Item</button>
+        <div id="mr-inventory-form" style="display:none;margin-top:10px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Instrument Update</h2>
+        <div id="mr-instrument-area" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;"></div>
+        <button class="btn" id="mr-add-instrument-btn" style="margin-top:10px;width:100%;">&#10133; Tambah Foto</button>
+        <div id="mr-instrument-form" style="display:none;margin-top:10px;"></div>
+      </div>
     </div>
   </section>
 
@@ -548,7 +614,7 @@ function nextSample(cur){const s='ABCDE';const i=s.indexOf(cur);return i<4?s[i+1
 
 function initTabs(){
   const tabs=$('tabs');
-  [{id:'input',lbl:'Input baru'},{id:'history',lbl:'Riwayat'},{id:'sblproject',lbl:'SBL-Project'},{id:'settings',lbl:'Pengaturan'}].forEach((d,i)=>{
+  [{id:'input',lbl:'Input baru'},{id:'history',lbl:'Riwayat'},{id:'sblproject',lbl:'SBL-Project'},{id:'meetingreport',lbl:'Meeting Report'},{id:'settings',lbl:'Pengaturan'}].forEach((d,i)=>{
     const b=document.createElement('button');
     b.textContent=d.lbl;b.className=i===0?'active':'';
     b.onclick=()=>switchTab(d.id);b.dataset.tab=d.id;tabs.appendChild(b);
@@ -559,6 +625,7 @@ function switchTab(id){
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
   if(id==='history')renderHistory();
   if(id==='sblproject')renderSblProjects();
+  if(id==='meetingreport')initMeetingReport();
   if(id==='settings'){
     $('supabase-url').value=getSupabaseUrl();
     $('supabase-key').value=getSupabaseKey();
@@ -2245,6 +2312,402 @@ async function deleteSblProject(projectNo){
   }
 }
 
+// Export Excel untuk 1 tahun laporan -- termasuk project dari tahun
+// sebelumnya yang statusnya MASIH BELUM SELESAI (bukan COMPLETED/CANCEL),
+// supaya pekerjaan yang "nyambung" ke tahun berjalan tetap terlihat.
+function getSblProjectsForYearReport(allProjects, targetYear){
+  return allProjects.filter(p=>{
+    const parsed=parseSblProjectNo(p.project_no);
+    if(!parsed||parsed.lokasi!=='SBL')return false; // hanya SBL untuk saat ini
+    if(targetYear==='ALL')return true;
+    const ty=parseInt(targetYear,10);
+    if(p.tahun===ty)return true;
+    const status=(p.status||'').toUpperCase();
+    if(p.tahun<ty && status!=='COMPLETED' && status!=='CANCEL')return true;
+    return false;
+  });
+}
+
+async function exportSblProjects(){
+  const btn=$('sbl-export-btn');
+  const selectedYear=$('sbl-year-select').value;
+
+  if(!cachedSblProjects.length){toast('Belum ada data project');return;}
+
+  const filtered=getSblProjectsForYearReport(cachedSblProjects, selectedYear).slice().sort(compareSblProjects);
+  if(!filtered.length){toast('Tidak ada data untuk tahun ini');return;}
+
+  btn.disabled=true;
+  btn.textContent='Menyiapkan file...';
+
+  const header=['Bulan','Project No.','LIMS No.','Segment','Application','Objective','Division','Customer','Requestor','Approver','Country','Sample Qty','Status','Type of Labwork','Qty Analysis','Sample Product Name','Monthly Report','Tahun'];
+  const rows=filtered.map(p=>[
+    p.bulan||'', p.project_no||'', p.lims_no||'', p.segment||'', p.application||'',
+    p.objective||'', p.division||'', p.customer||'', p.requestor||'', p.approver||'',
+    p.country||'', p.sample_qty!=null?p.sample_qty:'', p.status||'', p.type_labwork||'',
+    p.qty_analysis!=null?p.qty_analysis:'', p.sample_product_name||'', p.monthly_report||'', p.tahun||''
+  ]);
+
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([header,...rows]);
+  const sheetName=selectedYear==='ALL'?'Semua Tahun':String(selectedYear);
+  XLSX.utils.book_append_sheet(wb,ws,sheetName.substring(0,31));
+
+  const wbArrayBuffer=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const namePart=selectedYear==='ALL'?'semua_tahun':selectedYear;
+  const filename='SBL_Project_'+namePart+'_'+today()+'.xlsx';
+  const blob=new Blob([wbArrayBuffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+
+  btn.disabled=false;
+  btn.textContent='\u{1F4E4} Download Excel (Tahun Ini + Pending Tahun Lalu)';
+  toast('File berhasil didownload ('+filtered.length+' project)');
+}
+
+// ==== Meeting Report ====
+let cachedMeetingInventory=[];
+let cachedMeetingInstruments=[];
+let meetingChartInstances=[];
+
+function initMeetingReport(){
+  $('mr-period-type').onchange=()=>{ buildMrPeriodPicker(); renderMeetingReport(); };
+  buildMrPeriodPicker();
+  loadMeetingInventory();
+  loadMeetingInstruments();
+  renderMeetingReport();
+}
+
+function buildMrPeriodPicker(){
+  const type=$('mr-period-type').value;
+  const picker=$('mr-period-picker');
+  const thisYear=new Date().getFullYear();
+  const years=[thisYear-1, thisYear, thisYear+1];
+  const yearOpts=years.map(y=>'<option value="'+y+'"'+(y===thisYear?' selected':'')+'>'+y+'</option>').join('');
+
+  if(type==='monthly'){
+    const thisMonth=new Date().getMonth()+1;
+    const monthOpts=Array.from({length:12},(_,i)=>i+1).map(m=>'<option value="'+m+'"'+(m===thisMonth?' selected':'')+'>'+m+'</option>').join('');
+    picker.innerHTML=
+      '<div><label>Tahun</label><select id="mr-year" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+yearOpts+'</select></div>'+
+      '<div><label>Bulan</label><select id="mr-month" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+monthOpts+'</select></div>';
+  } else if(type==='semester'){
+    const thisHalf=(new Date().getMonth()+1)<=6?'1':'2';
+    picker.innerHTML=
+      '<div><label>Tahun</label><select id="mr-year" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+yearOpts+'</select></div>'+
+      '<div><label>Semester</label><select id="mr-half" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+
+      '<option value="1"'+(thisHalf==='1'?' selected':'')+'>H1 (Jan - Jun)</option>'+
+      '<option value="2"'+(thisHalf==='2'?' selected':'')+'>H2 (Jul - Des)</option></select></div>';
+  } else {
+    picker.innerHTML='<div><label>Tahun</label><select id="mr-year" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+yearOpts+'</select></div>';
+  }
+
+  picker.querySelectorAll('select').forEach(el=>{ el.onchange=renderMeetingReport; });
+}
+
+function getMrPeriodFilter(){
+  const type=$('mr-period-type').value;
+  const year=parseInt($('mr-year').value,10);
+  if(type==='monthly'){
+    const month=parseInt($('mr-month').value,10);
+    return {tahun:year, bulanMin:month, bulanMax:month, label:getMonthName(month)+' '+year};
+  } else if(type==='semester'){
+    const half=$('mr-half').value;
+    return half==='1'
+      ? {tahun:year, bulanMin:1, bulanMax:6, label:'Januari - Juni '+year}
+      : {tahun:year, bulanMin:7, bulanMax:12, label:'Juli - Desember '+year};
+  } else {
+    return {tahun:year, bulanMin:1, bulanMax:12, label:'Tahun '+year};
+  }
+}
+
+function getMonthName(m){
+  const names=['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  return names[m]||m;
+}
+
+function getMrFilteredProjects(){
+  const f=getMrPeriodFilter();
+  return cachedSblProjects.filter(p=>{
+    const parsed=parseSblProjectNo(p.project_no);
+    if(!parsed||parsed.lokasi!=='SBL')return false;
+    return p.tahun===f.tahun && p.bulan>=f.bulanMin && p.bulan<=f.bulanMax;
+  });
+}
+
+function sumBy(items, groupKey, valueKey){
+  const result={};
+  items.forEach(it=>{
+    const g=it[groupKey]||'(kosong)';
+    const v=valueKey?(it[valueKey]!=null?Number(it[valueKey]):0):1;
+    result[g]=(result[g]||0)+v;
+  });
+  return result;
+}
+
+async function renderMeetingReport(){
+  const f=getMrPeriodFilter();
+  $('mr-report-title').textContent='Meeting Report \u2014 '+f.label;
+  const projects=getMrFilteredProjects();
+  $('mr-report-subtitle').textContent='Total '+projects.length+' project pada periode ini (lokasi SBL)';
+
+  renderMrCharts(projects);
+  renderMrWorkPlan(projects);
+  renderInventoryTable();
+  renderInstrumentGallery();
+}
+
+function renderMrCharts(projects){
+  meetingChartInstances.forEach(c=>c.destroy());
+  meetingChartInstances=[];
+
+  const byType=sumBy(projects,'type_labwork','qty_analysis');
+  const byCountry=sumBy(projects,'country','qty_analysis');
+  const byStatus=sumBy(projects,'status',null); // COUNT project, bukan sum qty_analysis
+  const byApp=sumBy(projects,'application','qty_analysis');
+
+  drawMrBarChart('mr-chart-typelab', byType, '#14459e');
+  drawMrBarChart('mr-chart-country', byCountry, '#14459e');
+  drawMrBarChart('mr-chart-status', byStatus, '#f19719');
+  drawMrBarChart('mr-chart-application', byApp, '#14459e');
+}
+
+function drawMrBarChart(canvasId, dataObj, color){
+  const canvas=$(canvasId);
+  const labels=Object.keys(dataObj);
+  const data=Object.values(dataObj);
+  if(!labels.length){
+    const ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    return;
+  }
+  const chart=new Chart(canvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels, datasets:[{ data, backgroundColor:color }] },
+    options:{ responsive:true, plugins:{ legend:{display:false} }, scales:{ y:{beginAtZero:true} } }
+  });
+  meetingChartInstances.push(chart);
+}
+
+function renderMrWorkPlan(projects){
+  const ongoing=projects.filter(p=>(p.status||'').toUpperCase()==='ON GOING');
+  const area=$('mr-workplan-area');
+  if(!ongoing.length){
+    area.innerHTML='<div class="empty-state"><p>Tidak ada project On Going pada periode ini.</p></div>';
+    return;
+  }
+  let html='<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+  html+='<tr style="background:var(--brand-blue);color:#fff;">'+
+    ['LIMS','No Project','Objective','Requestor','Sample Qty','Application','Status'].map(h=>'<th style="padding:6px 8px;text-align:left;white-space:nowrap;">'+h+'</th>').join('')+
+    '</tr>';
+  ongoing.forEach((p,i)=>{
+    html+='<tr style="background:'+(i%2===0?'var(--raised)':'var(--paper)')+';">';
+    html+='<td style="padding:6px 8px;">'+(p.lims_no||'-')+'</td>';
+    html+='<td style="padding:6px 8px;font-family:var(--mono);white-space:nowrap;">'+(p.project_no||'-')+'</td>';
+    html+='<td style="padding:6px 8px;max-width:260px;">'+(p.objective||'-')+'</td>';
+    html+='<td style="padding:6px 8px;">'+(p.requestor||'-')+'</td>';
+    html+='<td style="padding:6px 8px;text-align:center;">'+(p.sample_qty!=null?p.sample_qty:'-')+'</td>';
+    html+='<td style="padding:6px 8px;">'+(p.application||'-')+'</td>';
+    html+='<td style="padding:6px 8px;"><span class="sbl-status-badge" style="background:'+sblStatusColor(p.status)+';">'+p.status+'</span></td>';
+    html+='</tr>';
+  });
+  html+='</table>';
+  area.innerHTML=html;
+}
+
+// ---- Inventory Update (manual CRUD) ----
+async function loadMeetingInventory(){
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey){cachedMeetingInventory=[];return;}
+  try{
+    const res=await fetch(sbUrl+'/rest/v1/meeting_inventory?select=*&order=created_at.asc', {headers:supabaseHeaders()});
+    if(res.ok)cachedMeetingInventory=await res.json();
+  }catch(e){ cachedMeetingInventory=[]; }
+  renderInventoryTable();
+}
+
+function renderInventoryTable(){
+  const area=$('mr-inventory-area');
+  if(!cachedMeetingInventory.length){
+    area.innerHTML='<div class="empty-state"><p>Belum ada item.</p></div>';
+    return;
+  }
+
+  let html='';
+  ['Item Beli','Equipment'].forEach(kat=>{
+    const items=cachedMeetingInventory.filter(it=>it.kategori===kat);
+    if(!items.length)return;
+    const headers=kat==='Equipment'?['Product Name','Qty','Type','Progress','']:['Product Name','Qty','Progress',''];
+    html+='<div style="font-size:12px;font-weight:700;color:var(--ink);margin:10px 0 6px;">'+(kat==='Item Beli'?'Items to be purchased':'Equipment Updates')+'</div>';
+    html+='<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+    html+='<tr style="background:var(--moss-p);">'+
+      headers.map(h=>'<th style="padding:6px 8px;text-align:left;">'+h+'</th>').join('')+
+      '</tr>';
+    items.forEach(it=>{
+      html+='<tr style="border-bottom:1px solid var(--line);">';
+      html+='<td style="padding:6px 8px;">'+(it.product_name||'-')+'</td>';
+      html+='<td style="padding:6px 8px;">'+(it.quantity||'-')+'</td>';
+      if(kat==='Equipment')html+='<td style="padding:6px 8px;">'+(it.tipe||'-')+'</td>';
+      html+='<td style="padding:6px 8px;">'+(it.progress||'-')+'</td>';
+      html+='<td style="padding:6px 8px;text-align:right;"><button class="row-del" onclick="deleteInventoryItem(&quot;'+it.id+'&quot;)">&#10005;</button></td>';
+      html+='</tr>';
+    });
+    html+='</table>';
+  });
+  area.innerHTML=html;
+}
+
+function showAddInventoryForm(){
+  const form=$('mr-inventory-form');
+  form.style.display='block';
+  form.innerHTML=
+    '<div class="field-row"><div><label>Kategori</label><select id="inv-kategori" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;"><option value="Item Beli">Item Beli</option><option value="Equipment">Equipment</option></select></div></div>'+
+    '<div class="field-row" style="margin-top:8px;"><div><label>Product Name</label><input type="text" id="inv-name" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;"></div></div>'+
+    '<div class="field-row" style="margin-top:8px;"><div><label>Quantity</label><input type="text" id="inv-qty" placeholder="misal: 2 unit" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;"></div>'+
+    '<div><label>Tipe (khusus Equipment)</label><input type="text" id="inv-tipe" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;"></div></div>'+
+    '<div class="field-row" style="margin-top:8px;"><div><label>Progress</label><input type="text" id="inv-progress" placeholder="misal: Processing / Done" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;"></div></div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px;"><button class="btn-primary" onclick="saveInventoryItem()" style="flex:1;">Simpan</button><button class="btn" onclick="$(\'mr-inventory-form\').style.display=\'none\'">Batal</button></div>';
+}
+
+async function saveInventoryItem(){
+  const item={
+    id:'inv_'+Date.now(),
+    kategori:$('inv-kategori').value,
+    product_name:$('inv-name').value.trim(),
+    quantity:$('inv-qty').value.trim()||null,
+    tipe:$('inv-tipe').value.trim()||null,
+    progress:$('inv-progress').value.trim()||null
+  };
+  if(!item.product_name){toast('Isi nama produk dulu');return;}
+
+  cachedMeetingInventory.push(item);
+  renderInventoryTable();
+  $('mr-inventory-form').style.display='none';
+  toast('Item ditambahkan');
+
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(sbUrl&&sbKey){
+    fetch(sbUrl+'/rest/v1/meeting_inventory', {
+      method:'POST', headers:supabaseHeaders({'Prefer':'return=minimal'}), body:JSON.stringify(item)
+    }).catch(()=>{ toast('Gagal sync ke database'); });
+  }
+}
+
+async function deleteInventoryItem(id){
+  if(!confirm('Hapus item ini?'))return;
+  cachedMeetingInventory=cachedMeetingInventory.filter(it=>it.id!==id);
+  renderInventoryTable();
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(sbUrl&&sbKey){
+    fetch(sbUrl+'/rest/v1/meeting_inventory?id=eq.'+encodeURIComponent(id), {method:'DELETE', headers:supabaseHeaders()}).catch(()=>{});
+  }
+}
+
+// ---- Instrument Update (foto, terkompres otomatis) ----
+async function loadMeetingInstruments(){
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey){cachedMeetingInstruments=[];return;}
+  try{
+    const res=await fetch(sbUrl+'/rest/v1/meeting_instruments?select=*&order=created_at.desc', {headers:supabaseHeaders()});
+    if(res.ok)cachedMeetingInstruments=await res.json();
+  }catch(e){ cachedMeetingInstruments=[]; }
+  renderInstrumentGallery();
+}
+
+function renderInstrumentGallery(){
+  const area=$('mr-instrument-area');
+  if(!cachedMeetingInstruments.length){
+    area.innerHTML='<div class="empty-state"><p>Belum ada foto.</p></div>';
+    return;
+  }
+  let html='';
+  cachedMeetingInstruments.forEach(it=>{
+    html+='<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--raised);">';
+    html+='<img src="'+it.foto_base64+'" style="width:100%;height:120px;object-fit:cover;display:block;">';
+    html+='<div style="padding:6px 8px;font-size:11px;color:var(--ink-s);display:flex;justify-content:space-between;align-items:center;gap:4px;">';
+    html+='<span>'+(it.caption||'-')+'</span>';
+    html+='<button class="row-del" onclick="deleteInstrumentPhoto(&quot;'+it.id+'&quot;)">&#10005;</button>';
+    html+='</div></div>';
+  });
+  area.innerHTML=html;
+}
+
+function showAddInstrumentForm(){
+  const form=$('mr-instrument-form');
+  form.style.display='block';
+  form.innerHTML=
+    '<div class="field-row"><div><label>Foto</label><input type="file" id="inst-file" accept="image/*" capture="environment" style="width:100%;"></div></div>'+
+    '<div id="inst-preview" style="margin-top:8px;"></div>'+
+    '<div class="field-row" style="margin-top:8px;"><div><label>Keterangan</label><input type="text" id="inst-caption" placeholder="misal: Rotary Dryer - Ruang Wet Lab" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;"></div></div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px;"><button class="btn-primary" id="inst-save-btn" style="flex:1;">Simpan</button><button class="btn" onclick="$(\'mr-instrument-form\').style.display=\'none\'">Batal</button></div>';
+
+  let compressedDataUrl=null;
+  $('inst-file').onchange=async ()=>{
+    const f=$('inst-file').files[0];
+    if(!f)return;
+    const reader=new FileReader();
+    reader.onload=async e=>{
+      $('inst-preview').innerHTML='<p class="help">Mengompres foto...</p>';
+      compressedDataUrl=await compressImage(e.target.result, 1000, 0.75);
+      $('inst-preview').innerHTML='<img src="'+compressedDataUrl+'" style="max-width:100%;border-radius:8px;">';
+    };
+    reader.readAsDataURL(f);
+  };
+
+  $('inst-save-btn').onclick=async ()=>{
+    if(!compressedDataUrl){toast('Pilih foto dulu');return;}
+    const item={
+      id:'inst_'+Date.now(),
+      caption:$('inst-caption').value.trim()||null,
+      foto_base64:compressedDataUrl
+    };
+    cachedMeetingInstruments.unshift(item);
+    renderInstrumentGallery();
+    form.style.display='none';
+    toast('Foto ditambahkan');
+
+    const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+    if(sbUrl&&sbKey){
+      fetch(sbUrl+'/rest/v1/meeting_instruments', {
+        method:'POST', headers:supabaseHeaders({'Prefer':'return=minimal'}), body:JSON.stringify(item)
+      }).catch(()=>{ toast('Gagal sync ke database'); });
+    }
+  };
+}
+
+async function deleteInstrumentPhoto(id){
+  if(!confirm('Hapus foto ini?'))return;
+  cachedMeetingInstruments=cachedMeetingInstruments.filter(it=>it.id!==id);
+  renderInstrumentGallery();
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(sbUrl&&sbKey){
+    fetch(sbUrl+'/rest/v1/meeting_instruments?id=eq.'+encodeURIComponent(id), {method:'DELETE', headers:supabaseHeaders()}).catch(()=>{});
+  }
+}
+
+// ---- Download laporan sebagai gambar (untuk print/presentasi) ----
+async function downloadMeetingReportAsImage(){
+  const btn=$('mr-download-btn');
+  btn.disabled=true;
+  btn.textContent='Menyiapkan gambar...';
+  try{
+    const canvas=await html2canvas($('mr-report-content'), {backgroundColor:'#f7f5f0', scale:2});
+    const dataUrl=canvas.toDataURL('image/png');
+    const a=document.createElement('a');
+    a.href=dataUrl;
+    a.download='Meeting_Report_'+today()+'.png';
+    a.click();
+    toast('Gambar berhasil didownload');
+  }catch(e){
+    toast('Gagal buat gambar: '+e.message);
+  }
+  btn.disabled=false;
+  btn.textContent='\u{1F4F7} Download sebagai Gambar';
+}
+
 async function delRecord(id,instrument){
   if(!hasExportedThisSession){
     toast('Export data dulu sebelum bisa menghapus');
@@ -2524,6 +2987,10 @@ $('sbl-new-btn').onclick=()=>{
   }
 };
 $('sbl-year-select').onchange=()=>renderSblProjectList();
+$('sbl-export-btn').onclick=exportSblProjects;
+$('mr-download-btn').onclick=downloadMeetingReportAsImage;
+$('mr-add-inventory-btn').onclick=showAddInventoryForm;
+$('mr-add-instrument-btn').onclick=showAddInstrumentForm;
 $('export-csv').onclick=exportCSV;
 
 // Setup field No. Project: load nilai terakhir, auto-uppercase, auto-simpan
