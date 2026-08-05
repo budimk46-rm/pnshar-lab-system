@@ -171,7 +171,7 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .mr-menu-item{background:none;border:none;color:rgba(255,255,255,.65);text-align:left;padding:11px 16px;font-size:13px;cursor:pointer;font-family:var(--sans);border-left:3px solid transparent;white-space:nowrap;}
 .mr-menu-item.active{background:rgba(255,255,255,.12);color:#fff;font-weight:700;border-left-color:var(--moss);}
 .mr-menu-item:hover{background:rgba(255,255,255,.08);color:#fff;}
-.mr-main{flex:1;overflow-y:auto;padding:16px;min-width:0;}
+.mr-main{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px;min-width:0;}
 .mr-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);}
 .mr-section{display:none;}
 .mr-section.active{display:block;}
@@ -391,26 +391,26 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
           <div class="mr-section" id="mr-section-typelab">
             <h2>Analysis Request by Type of Lab Work</h2>
             <p class="help mr-summary" id="mr-summary-typelab"></p>
-            <canvas id="mr-chart-typelab" height="180"></canvas>
+            <div style="position:relative;height:340px;width:100%;"><canvas id="mr-chart-typelab"></canvas></div>
           </div>
           <div class="mr-section" id="mr-section-division">
             <h2>Analysis Request by Division</h2>
             <p class="help mr-summary" id="mr-summary-division"></p>
-            <canvas id="mr-chart-division" height="180"></canvas>
+            <div style="position:relative;height:340px;width:100%;"><canvas id="mr-chart-division"></canvas></div>
           </div>
           <div class="mr-section" id="mr-section-country">
             <h2>Analysis Request by Country</h2>
-            <canvas id="mr-chart-country" height="180"></canvas>
+            <div style="position:relative;height:340px;width:100%;"><canvas id="mr-chart-country"></canvas></div>
           </div>
           <div class="mr-section" id="mr-section-status">
             <h2>Total Number of Analysis Request (by Status)</h2>
             <p class="help mr-summary" id="mr-summary-status"></p>
-            <canvas id="mr-chart-status" height="180"></canvas>
+            <div style="position:relative;height:340px;width:100%;"><canvas id="mr-chart-status"></canvas></div>
           </div>
           <div class="mr-section" id="mr-section-application">
             <h2>Analysis Request by Application</h2>
             <p class="help mr-summary" id="mr-summary-application"></p>
-            <canvas id="mr-chart-application" height="180"></canvas>
+            <div style="position:relative;height:340px;width:100%;"><canvas id="mr-chart-application"></canvas></div>
           </div>
 
           <div class="mr-section" id="mr-section-workplan">
@@ -2104,9 +2104,31 @@ function compareSblProjects(a,b){
   return String(a.project_no).localeCompare(String(b.project_no));
 }
 
+// Cari nomor urut berikutnya untuk tahun berjalan (ambil nomor tertinggi
+// yang sudah dipakai tahun ini, lalu +1). Kalau belum ada project sama
+// sekali di tahun ini, mulai dari 1.
+function getNextSblNumber(){
+  const now=new Date();
+  const yy=String(now.getFullYear()).slice(-2);
+  const mm=String(now.getMonth()+1).padStart(2,'0');
+
+  let maxUrut=0;
+  cachedSblProjects.forEach(p=>{
+    const parsed=parseSblProjectNo(p.project_no);
+    if(parsed && parsed.lokasi==='SBL' && String(parsed.tahun).slice(-2)===yy){
+      if(parsed.nomorUrut>maxUrut)maxUrut=parsed.nomorUrut;
+    }
+  });
+  const nextUrut=String(maxUrut+1).padStart(3,'0');
+  return {nextUrut, yy, mm};
+}
+
 function buildSblNewForm(){
   const container=$('sbl-new-form');
-  let html=renderSblFormFields(null, false);
+  const {nextUrut, yy, mm}=getNextSblNumber();
+  const suggestion='SBL-LT'+nextUrut+'/-'+yy+mm;
+  let html=renderSblFormFields({project_no:suggestion}, false);
+  html+='<p class="help" style="margin-top:-4px;">Nomor urut berikutnya untuk tahun ini: <b>'+nextUrut+'</b> \u2014 sudah diisikan otomatis, sesuaikan tipe (LT/LA/QC) dan kode aplikasinya.</p>';
   html+='<div style="display:flex;gap:8px;margin-top:16px;"><button class="btn-primary" id="sbl-save-btn" style="flex:1;">Simpan Project</button><button class="btn" id="sbl-cancel-btn">Batal</button></div>';
   container.innerHTML=html;
 
@@ -2625,11 +2647,10 @@ function drawMrBarChart(canvasId, dataObj){
 
   const chart=new Chart(canvas.getContext('2d'), {
     type:'bar',
-    data:{ labels, datasets:[{ data, backgroundColor:colors, borderRadius:4, maxBarThickness:56 }] },
+    data:{ labels, datasets:[{ data, backgroundColor:colors, borderRadius:4, maxBarThickness:70, categoryPercentage:0.7, barPercentage:0.9 }] },
     options:{
       responsive:true,
-      maintainAspectRatio:true,
-      aspectRatio:2.4,
+      maintainAspectRatio:false,
       layout:{ padding:{ top:24 } },
       plugins:{
         legend:{ display:false },
