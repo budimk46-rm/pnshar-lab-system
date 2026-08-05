@@ -2415,16 +2415,34 @@ let meetingChartInstances=[];
 
 let currentMrSection='cover';
 
-function initMeetingReport(){
+async function initMeetingReport(){
   document.querySelectorAll('.mr-menu-item').forEach(btn=>{
     btn.onclick=()=>switchMrSection(btn.dataset.section);
   });
   $('mr-fullscreen-btn').onclick=toggleMrFullscreen;
   $('mr-period-type').onchange=()=>{ buildMrPeriodPicker(); renderCurrentMrSection(); };
   buildMrPeriodPicker();
-  loadMeetingInventory();
-  loadMeetingInstruments();
+
+  // Tampilkan UI dulu (supaya terasa cepat/responsif), lalu fetch SEMUA data
+  // yang dibutuhkan sekaligus secara PARALEL -- termasuk data project, karena
+  // sebelumnya kalau user belum pernah buka tab SBL-Project, grafik kosong
+  // total (cachedSblProjects belum pernah ke-load).
   switchMrSection('cover');
+  await Promise.all([
+    fetchSblProjectsForMeeting(),
+    loadMeetingInventory(),
+    loadMeetingInstruments()
+  ]);
+  renderCurrentMrSection();
+}
+
+async function fetchSblProjectsForMeeting(){
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey)return;
+  try{
+    const res=await fetch(sbUrl+'/rest/v1/sbl_projects?select=*&order=project_no.asc', {headers:supabaseHeaders()});
+    if(res.ok)cachedSblProjects=await res.json();
+  }catch(e){ /* biarkan cache lama kalau gagal, jangan timpa dengan kosong */ }
 }
 
 function switchMrSection(sectionId){
@@ -2435,7 +2453,13 @@ function switchMrSection(sectionId){
   document.querySelectorAll('.mr-section').forEach(sec=>{
     sec.classList.toggle('active', sec.id==='mr-section-'+sectionId);
   });
-  renderCurrentMrSection();
+  // Double requestAnimationFrame: pastikan browser selesai reflow/paint
+  // perubahan display dulu, baru Chart.js menghitung ukuran canvas --
+  // kalau langsung render di tick yang sama, canvas masih terukur 0x0
+  // karena section-nya baru saja "dimunculkan" lewat CSS.
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(renderCurrentMrSection);
+  });
 }
 
 function toggleMrFullscreen(){
