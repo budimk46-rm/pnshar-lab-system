@@ -16,6 +16,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   --ink:#1a2420;--ink-s:#4a5550;--ink-f:#8a9590;
@@ -163,10 +164,10 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .wp-card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--raised);margin-bottom:12px;}
 .wp-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
 .wp-project-no{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--brand-blue);}
-.wp-info{font-size:12px;color:var(--ink-s);line-height:1.6;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--line);}
+.wp-info{font-size:12px;color:var(--ink);line-height:1.6;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--line);}
 .wp-info b{color:var(--ink);}
 .wp-extra-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;}
-.wp-extra-fields label{display:block;font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--ink-f);margin-bottom:3px;}
+.wp-extra-fields label{display:block;font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--ink);margin-bottom:3px;font-weight:700;}
 .wp-extra-fields input,.wp-extra-fields select{width:100%;font-family:var(--sans);font-size:13px;padding:7px 9px;border-radius:6px;border:1px solid var(--line-s);background:var(--paper);color:var(--ink);}
 .wp-save-btn{width:100%;font-size:12px;padding:8px;border-radius:6px;border:none;background:var(--moss);color:#fff;cursor:pointer;font-weight:600;}
 .sbl-card-actions{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);}
@@ -373,6 +374,7 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       </div>
       <div class="toolbar">
         <button class="btn" id="wp-refresh-btn">&#8635; Muat ulang</button>
+        <button class="btn" id="wp-pdf-btn" style="flex:1;">&#128196; Download PDF</button>
       </div>
       <div class="field-row" style="margin-top:10px;">
         <div>
@@ -2414,6 +2416,24 @@ async function saveEditSblProject(projectNo){
   const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
   if(!sbUrl||!sbKey){toast('Supabase belum terhubung');return;}
 
+  // Kalau status diubah jadi Completed, tarik data Comparison Product dari
+  // Work Planning (kalau ada) dan gabungkan ke Sample Product Name --
+  // supaya info itu tidak hilang begitu project keluar dari Work Planning.
+  if((data.status||'').toUpperCase()==='COMPLETED'){
+    try{
+      const resWp=await fetch(sbUrl+'/rest/v1/sbl_work_planning?project_no=eq.'+encodeURIComponent(projectNo)+'&select=comparison_product', {headers:supabaseHeaders()});
+      if(resWp.ok){
+        const rows=await resWp.json();
+        const compProduct=rows[0]&&rows[0].comparison_product;
+        if(compProduct){
+          data.sample_product_name=data.sample_product_name
+            ? data.sample_product_name+'; '+compProduct
+            : compProduct;
+        }
+      }
+    }catch(e){ /* kalau gagal ambil, lanjut simpan tanpa itu -- tidak fatal */ }
+  }
+
   try{
     const res=await fetch(sbUrl+'/rest/v1/sbl_projects?project_no=eq.'+encodeURIComponent(projectNo), {
       method:'PATCH',
@@ -2560,6 +2580,17 @@ function renderWorkPlanningList(){
     });
   }
 
+  // Urutkan berdasarkan "Estimated" (rencana kapan dikerjakan) dulu --
+  // yang belum ada rencana (kosong) diletakkan di akhir -- lalu nomor
+  // project sebagai urutan kedua.
+  items.sort((a,b)=>{
+    const estA=(a.wp.estimated||'').trim(), estB=(b.wp.estimated||'').trim();
+    if(!estA && estB)return 1;
+    if(estA && !estB)return -1;
+    if(estA!==estB)return estA.localeCompare(estB);
+    return compareSblProjects(a.project, b.project);
+  });
+
   if(!items.length){
     area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Tidak ada project untuk ditampilkan.</p></div>';
     return;
@@ -2618,6 +2649,42 @@ async function saveWorkPlanningItem(projectNo){
       body: JSON.stringify(data)
     });
   }catch(e){ toast('Gagal sync ke database'); }
+}
+
+async function downloadWorkPlanningAsPDF(){
+  const btn=$('wp-pdf-btn');
+  btn.disabled=true;
+  btn.textContent='Menyiapkan PDF...';
+  try{
+    const canvas=await html2canvas($('wp-area'), {backgroundColor:'#f7f5f0', scale:2});
+    const imgData=canvas.toDataURL('image/png');
+
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF('p','mm','a4');
+    const pageWidth=pdf.internal.pageSize.getWidth();
+    const pageHeight=pdf.internal.pageSize.getHeight();
+    const imgWidth=pageWidth;
+    const imgHeight=(canvas.height*imgWidth)/canvas.width;
+
+    let heightLeft=imgHeight;
+    let position=0;
+    pdf.addImage(imgData,'PNG',0,position,imgWidth,imgHeight);
+    heightLeft-=pageHeight;
+
+    while(heightLeft>0){
+      position=heightLeft-imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData,'PNG',0,position,imgWidth,imgHeight);
+      heightLeft-=pageHeight;
+    }
+
+    pdf.save('Work_Planning_'+today()+'.pdf');
+    toast('PDF berhasil didownload');
+  }catch(e){
+    toast('Gagal buat PDF: '+e.message);
+  }
+  btn.disabled=false;
+  btn.textContent='\u{1F4C4} Download PDF';
 }
 
 // ==== Meeting Report ====
@@ -3366,6 +3433,7 @@ $('sbl-new-btn').onclick=()=>{
 $('sbl-year-select').onchange=()=>renderSblProjectList();
 $('sbl-export-btn').onclick=exportSblProjects;
 $('wp-refresh-btn').onclick=loadWorkPlanning;
+$('wp-pdf-btn').onclick=downloadWorkPlanningAsPDF;
 $('mr-download-btn').onclick=downloadMeetingReportAsImage;
 $('mr-add-inventory-btn').onclick=showAddInventoryForm;
 $('mr-add-instrument-btn').onclick=showAddInstrumentForm;
