@@ -164,7 +164,7 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sbl-del-btn{color:var(--rust);border-color:var(--rust-p);}
 .sbl-del-btn:hover{background:var(--rust-p);}
 
-.mr-layout{display:flex;min-height:70vh;border:1px solid var(--line-s);border-radius:var(--r);overflow:hidden;background:var(--raised);}
+.mr-layout{display:flex;height:calc(100vh - 190px);min-height:480px;border:1px solid var(--line-s);border-radius:var(--r);overflow:hidden;background:var(--raised);}
 .mr-sidebar{width:210px;flex-shrink:0;background:var(--brand-blue);display:flex;flex-direction:column;padding:14px 0;}
 .mr-sidebar-logo{padding:0 16px 14px;}
 .mr-sidebar-logo img{width:100%;max-width:70px;display:block;margin:0 auto;background:#fff;border-radius:10px;padding:6px;}
@@ -177,12 +177,12 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .mr-section.active{display:block;}
 
 @media (max-width:720px){
-  .mr-layout{flex-direction:column;min-height:0;}
+  .mr-layout{flex-direction:column;height:auto;min-height:0;}
   .mr-sidebar{width:100%;flex-direction:row;overflow-x:auto;padding:8px;align-items:center;}
   .mr-sidebar-logo{display:none;}
   .mr-menu-item{border-left:none;border-bottom:3px solid transparent;padding:8px 12px;}
   .mr-menu-item.active{border-left:none;border-bottom-color:var(--moss);}
-  .mr-main{padding:12px;}
+  .mr-main{padding:12px;max-height:none;}
 }
 .empty-state .icon{font-size:32px;margin-bottom:10px;}
 .empty-state p{margin:4px 0;font-size:13px;}
@@ -360,6 +360,7 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
         <div class="mr-sidebar-logo"><img src="./icon-192.png" alt="APC"></div>
         <button class="mr-menu-item active" data-section="cover">&#128196; Ringkasan</button>
         <button class="mr-menu-item" data-section="typelab">Type of Lab Work</button>
+        <button class="mr-menu-item" data-section="division">Division</button>
         <button class="mr-menu-item" data-section="country">Country</button>
         <button class="mr-menu-item" data-section="status">Status</button>
         <button class="mr-menu-item" data-section="application">Application</button>
@@ -389,7 +390,13 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
 
           <div class="mr-section" id="mr-section-typelab">
             <h2>Analysis Request by Type of Lab Work</h2>
+            <p class="help mr-summary" id="mr-summary-typelab"></p>
             <canvas id="mr-chart-typelab" height="180"></canvas>
+          </div>
+          <div class="mr-section" id="mr-section-division">
+            <h2>Analysis Request by Division</h2>
+            <p class="help mr-summary" id="mr-summary-division"></p>
+            <canvas id="mr-chart-division" height="180"></canvas>
           </div>
           <div class="mr-section" id="mr-section-country">
             <h2>Analysis Request by Country</h2>
@@ -397,15 +404,18 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
           </div>
           <div class="mr-section" id="mr-section-status">
             <h2>Total Number of Analysis Request (by Status)</h2>
+            <p class="help mr-summary" id="mr-summary-status"></p>
             <canvas id="mr-chart-status" height="180"></canvas>
           </div>
           <div class="mr-section" id="mr-section-application">
             <h2>Analysis Request by Application</h2>
+            <p class="help mr-summary" id="mr-summary-application"></p>
             <canvas id="mr-chart-application" height="180"></canvas>
           </div>
 
           <div class="mr-section" id="mr-section-workplan">
             <h2>Work Plan (Project On Going)</h2>
+            <p class="help mr-summary" id="mr-summary-workplan"></p>
             <div id="mr-workplan-area" style="overflow-x:auto;"></div>
           </div>
 
@@ -2552,22 +2562,40 @@ function sumBy(items, groupKey, valueKey){
 
 // Render HANYA section yang sedang aktif -- penting untuk Chart.js
 // (canvas yang display:none tidak bisa dihitung ukurannya dengan benar)
+function getTotalSampleQty(projects){
+  return projects.reduce((sum,p)=>sum+(p.sample_qty!=null?Number(p.sample_qty):0),0);
+}
+
+function sortObjByValueDesc(obj){
+  const sorted={};
+  Object.entries(obj).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{ sorted[k]=v; });
+  return sorted;
+}
+
 function renderCurrentMrSection(){
   const f=getMrPeriodFilter();
   const projects=getMrFilteredProjects();
+  const totalSampleQty=getTotalSampleQty(projects);
 
   if(currentMrSection==='cover'){
     $('mr-report-title').textContent='Meeting Report \u2014 '+f.label;
     $('mr-report-subtitle').textContent='Total '+projects.length+' project pada periode ini (lokasi SBL)';
   } else if(currentMrSection==='typelab'){
+    $('mr-summary-typelab').textContent='Total Sample Qty: '+totalSampleQty+' (dari '+projects.length+' project)';
     drawMrBarChart('mr-chart-typelab', sumBy(projects,'type_labwork','qty_analysis'));
+  } else if(currentMrSection==='division'){
+    $('mr-summary-division').textContent='Total Sample Qty: '+totalSampleQty+' (dari '+projects.length+' project)';
+    drawMrBarChart('mr-chart-division', sumBy(projects,'division','qty_analysis'));
   } else if(currentMrSection==='country'){
     drawMrBarChart('mr-chart-country', sumBy(projects,'country','qty_analysis'));
   } else if(currentMrSection==='status'){
+    $('mr-summary-status').textContent='Total Sample Qty: '+totalSampleQty+' (dari '+projects.length+' project)';
     drawMrBarChart('mr-chart-status', sumBy(projects,'status',null));
   } else if(currentMrSection==='application'){
-    drawMrBarChart('mr-chart-application', sumBy(projects,'application','qty_analysis'));
+    $('mr-summary-application').textContent='Total Sample Qty: '+totalSampleQty+' (dari '+projects.length+' project)';
+    drawMrBarChart('mr-chart-application', sortObjByValueDesc(sumBy(projects,'application','qty_analysis')));
   } else if(currentMrSection==='workplan'){
+    $('mr-summary-workplan').textContent='Total Sample Qty: '+totalSampleQty+' (dari '+projects.length+' project)';
     renderMrWorkPlan(projects);
   } else if(currentMrSection==='inventory'){
     renderInventoryTable();
@@ -2619,7 +2647,7 @@ function drawMrBarChart(canvasId, dataObj){
 }
 
 function renderMrWorkPlan(projects){
-  const ongoing=projects.filter(p=>(p.status||'').toUpperCase()==='ON GOING');
+  const ongoing=projects.filter(p=>(p.status||'').toUpperCase()==='ON GOING').slice().sort(compareSblProjects);
   const area=$('mr-workplan-area');
   if(!ongoing.length){
     area.innerHTML='<div class="empty-state"><p>Tidak ada project On Going pada periode ini.</p></div>';
@@ -2824,7 +2852,7 @@ async function downloadMeetingReportAsImage(){
   try{
     // Render & tampilkan SEMUA section sementara supaya ikut ter-screenshot
     // (biasanya cuma 1 section yang terlihat karena mode sidebar)
-    const allSections=['cover','typelab','country','status','application','workplan','inventory','instrument'];
+    const allSections=['cover','typelab','division','country','status','application','workplan','inventory','instrument'];
     document.querySelectorAll('.mr-section').forEach(sec=>sec.classList.add('active'));
     for(const s of allSections){
       currentMrSection=s;
