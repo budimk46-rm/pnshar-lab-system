@@ -193,6 +193,7 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sync-dot.ok{background:var(--moss);}.sync-dot.err{background:var(--rust);}
 .sync-status a{color:var(--moss);cursor:pointer;text-decoration:underline;}
 .help{font-size:12px;color:var(--ink-f);margin-top:6px;line-height:1.6;}
+.mr-summary{color:var(--ink)!important;font-weight:600;}
 input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);background:var(--raised);color:var(--ink);width:100%;}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--raised);padding:10px 18px;border-radius:100px;font-size:13px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:100;max-width:90%;text-align:center;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -2660,7 +2661,10 @@ function drawMrBarChart(canvasId, dataObj){
           formatter:(v)=> v
         }
       },
-      scales:{ y:{ beginAtZero:true, grace:'12%' } }
+      scales:{
+        y:{ beginAtZero:true, grace:'12%', ticks:{ color:'#1a2420' } },
+        x:{ ticks:{ color:'#1a2420', font:{ weight:'600' } } }
+      }
     },
     plugins:[ChartDataLabels]
   });
