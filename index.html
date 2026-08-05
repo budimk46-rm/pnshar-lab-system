@@ -2057,7 +2057,32 @@ const SBL_FORM_FIELDS = [
   {key:'project_no', label:'Project No.', type:'text', required:true, placeholder:'SBL-LT124/BAC-2511', hint:'Format: SBL-[Tipe][NoUrut]/[Aplikasi]-[YYMM], misal SBL-LT124/BAC-2511'},
   {key:'lims_no', label:'LIMS No.', type:'text', placeholder:'LIMS-SBL-2512-0026'},
   {key:'segment', label:'Segment', type:'select', options:['PAPER','PULP','WATER MANAGEMENT','FIBER TECHNOLOGY','SURFACE TECHNOLOGY','OPERATIONAL SUPPORT'], required:true},
-  {key:'application', label:'Application', type:'text', placeholder:'contoh: BAC', required:true},
+  {key:'application', label:'Application', type:'select', required:true, options:[
+    {value:'MBI', label:'MBI \u2014 BIOCIDE'},
+    {value:'BAC', label:'BAC \u2014 BARRIER COATING'},
+    {value:'CRP', label:'CRP \u2014 CREPING & RELEASE'},
+    {value:'DCO', label:'DCO \u2014 DEPOSIT CONTROL'},
+    {value:'FWC', label:'FWC \u2014 FELT CONDITIONING'},
+    {value:'OTH', label:'OTH \u2014 OTHER'},
+    {value:'PCP', label:'PCP \u2014 PITCH CONTROL PULP'},
+    {value:'PER', label:'PER \u2014 PROXIDE PERFORM ENHANCER'},
+    {value:'SSZ', label:'SSZ \u2014 SURFACE SIZING'},
+    {value:'STR', label:'STR \u2014 DRY STRENGTH'},
+    {value:'CTG', label:'CTG \u2014 COATING'},
+    {value:'DFM', label:'DFM \u2014 DEFOAMER'},
+    {value:'WSR', label:'WSR \u2014 WET STRENGTH'},
+    {value:'EZY', label:'EZY \u2014 ENZYME'},
+    {value:'OBA', label:'OBA \u2014 OPTICAL BRIGHTENING AGENT'},
+    {value:'ISZ', label:'ISZ \u2014 INTERNAL SIZING'},
+    {value:'BRE', label:'BRE \u2014 BRIGTHNESS ENHANCER IN DIP'},
+    {value:'CLE', label:'CLE \u2014 CLEANER'},
+    {value:'CLF', label:'CLF \u2014 FABRIC CLEANER'},
+    {value:'DIP', label:'DIP \u2014 DEINKING'},
+    {value:'TCO', label:'TCO \u2014 TISSUE CONVERTING'},
+    {value:'TSO', label:'TSO \u2014 SOFTENER'},
+    {value:'CWT', label:'CWT \u2014 COOLING WATER TREATMENT'},
+    {value:'DAD', label:'DAD \u2014 DIGESTER ADDITIVES'}
+  ]},
   {key:'objective', label:'Objective', type:'textarea', required:true},
   {key:'division', label:'Division', type:'select', options:['TECH&DEV','SALES','QA/QC'], required:true},
   {key:'customer', label:'Customer', type:'text'},
@@ -2295,7 +2320,12 @@ function renderSblFormFields(prefillData, isEdit){
     html+='<div class="field-row" style="margin-top:10px;"><div style="width:100%;">';
     html+='<label>'+f.label+(f.required?' *':'')+(readonly?' (tidak bisa diubah)':'')+'</label>';
     if(f.type==='select'){
-      const opts=f.options.map(o=>'<option value="'+o+'"'+(String(rawVal)===o?' selected':(!rawVal&&f.default===o?' selected':''))+'>'+o+'</option>').join('');
+      const opts=f.options.map(o=>{
+        const val=typeof o==='object'?o.value:o;
+        const lbl=typeof o==='object'?o.label:o;
+        const isSelected=String(rawVal)===val||(!rawVal&&f.default===val);
+        return '<option value="'+val+'"'+(isSelected?' selected':'')+'>'+lbl+'</option>';
+      }).join('');
       html+='<select class="sbl-form-input" data-key="'+f.key+'" '+(readonly?'disabled':'')+' style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;background:var(--raised);color:var(--ink);"><option value="">-- Pilih --</option>'+opts+'</select>';
     } else if(f.type==='textarea'){
       html+='<textarea class="sbl-form-input" data-key="'+f.key+'" rows="2" placeholder="'+(f.placeholder||'')+'" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;background:var(--raised);color:var(--ink);">'+(rawVal||'')+'</textarea>';
