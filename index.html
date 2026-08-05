@@ -161,6 +161,34 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sbl-card-actions button{flex:1;font-size:12px;padding:8px;}
 .sbl-del-btn{color:var(--rust);border-color:var(--rust-p);}
 .sbl-del-btn:hover{background:var(--rust-p);}
+
+.mr-layout{display:flex;min-height:70vh;border:1px solid var(--line-s);border-radius:var(--r);overflow:hidden;background:var(--raised);}
+.mr-sidebar{width:210px;flex-shrink:0;background:var(--brand-blue);display:flex;flex-direction:column;padding:14px 0;}
+.mr-sidebar-logo{padding:0 16px 14px;}
+.mr-sidebar-logo img{width:100%;max-width:70px;display:block;margin:0 auto;background:#fff;border-radius:10px;padding:6px;}
+.mr-menu-item{background:none;border:none;color:rgba(255,255,255,.65);text-align:left;padding:11px 16px;font-size:13px;cursor:pointer;font-family:var(--sans);border-left:3px solid transparent;white-space:nowrap;}
+.mr-menu-item.active{background:rgba(255,255,255,.12);color:#fff;font-weight:700;border-left-color:var(--moss);}
+.mr-menu-item:hover{background:rgba(255,255,255,.08);color:#fff;}
+.mr-fullscreen-btn{margin:14px 16px 0;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:9px;border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--sans);}
+.mr-fullscreen-btn:hover{background:rgba(255,255,255,.25);}
+.mr-main{flex:1;overflow-y:auto;padding:16px;min-width:0;}
+.mr-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);}
+.mr-section{display:none;}
+.mr-section.active{display:block;}
+
+.mr-layout:fullscreen{background:var(--paper);min-height:100vh;}
+.mr-layout:fullscreen .mr-main{padding:36px;}
+.mr-layout:-webkit-full-screen{background:var(--paper);min-height:100vh;}
+
+@media (max-width:720px){
+  .mr-layout{flex-direction:column;min-height:0;}
+  .mr-sidebar{width:100%;flex-direction:row;overflow-x:auto;padding:8px;align-items:center;}
+  .mr-sidebar-logo{display:none;}
+  .mr-menu-item{border-left:none;border-bottom:3px solid transparent;padding:8px 12px;}
+  .mr-menu-item.active{border-left:none;border-bottom-color:var(--moss);}
+  .mr-fullscreen-btn{display:none;}
+  .mr-main{padding:12px;}
+}
 .empty-state .icon{font-size:32px;margin-bottom:10px;}
 .empty-state p{margin:4px 0;font-size:13px;}
 .toolbar{display:flex;gap:8px;margin-bottom:14px;}
@@ -332,63 +360,75 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
   </section>
 
   <section class="panel" data-panel="meetingreport">
-    <div class="card">
-      <div class="toolbar">
-        <button class="btn" id="mr-download-btn" style="flex:1;">&#128247; Download sebagai Gambar</button>
+    <div class="mr-layout" id="mr-layout">
+      <div class="mr-sidebar" id="mr-sidebar">
+        <div class="mr-sidebar-logo"><img src="./icon-192.png" alt="APC"></div>
+        <button class="mr-menu-item active" data-section="cover">&#128196; Ringkasan</button>
+        <button class="mr-menu-item" data-section="typelab">Type of Lab Work</button>
+        <button class="mr-menu-item" data-section="country">Country</button>
+        <button class="mr-menu-item" data-section="status">Status</button>
+        <button class="mr-menu-item" data-section="application">Application</button>
+        <button class="mr-menu-item" data-section="workplan">Work Plan</button>
+        <button class="mr-menu-item" data-section="inventory">Inventory Update</button>
+        <button class="mr-menu-item" data-section="instrument">Instrument Update</button>
+        <div style="flex:1;"></div>
+        <button class="mr-fullscreen-btn" id="mr-fullscreen-btn">&#9974; Fullscreen</button>
       </div>
-      <div class="field-row" style="margin-top:10px;">
-        <div>
-          <label>Jenis Periode</label>
-          <select id="mr-period-type" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
+
+      <div class="mr-main">
+        <div class="mr-toolbar">
+          <select id="mr-period-type" style="font-family:var(--sans);font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--line-s);">
             <option value="monthly">Monthly</option>
             <option value="semester">Half Year (Semester)</option>
             <option value="yearly">A Year</option>
           </select>
+          <div id="mr-period-picker" style="display:flex;gap:8px;"></div>
+          <div style="flex:1;"></div>
+          <button class="btn" id="mr-download-btn">&#128247; Download Gambar</button>
         </div>
-      </div>
-      <div id="mr-period-picker" class="field-row" style="margin-top:10px;"></div>
-    </div>
 
-    <div id="mr-report-content">
-      <div class="card">
-        <h2 id="mr-report-title" style="margin-bottom:4px;">Laporan</h2>
-        <p class="help" id="mr-report-subtitle"></p>
-      </div>
+        <div id="mr-report-content">
+          <div class="mr-section active" id="mr-section-cover">
+            <h2 id="mr-report-title" style="margin-bottom:4px;">Laporan</h2>
+            <p class="help" id="mr-report-subtitle"></p>
+          </div>
 
-      <div class="card">
-        <h2>Analysis Request by Type of Lab Work</h2>
-        <canvas id="mr-chart-typelab" height="180"></canvas>
-      </div>
-      <div class="card">
-        <h2>Analysis Request by Country</h2>
-        <canvas id="mr-chart-country" height="180"></canvas>
-      </div>
-      <div class="card">
-        <h2>Total Number of Analysis Request (by Status)</h2>
-        <canvas id="mr-chart-status" height="180"></canvas>
-      </div>
-      <div class="card">
-        <h2>Analysis Request by Application</h2>
-        <canvas id="mr-chart-application" height="180"></canvas>
-      </div>
+          <div class="mr-section" id="mr-section-typelab">
+            <h2>Analysis Request by Type of Lab Work</h2>
+            <canvas id="mr-chart-typelab" height="180"></canvas>
+          </div>
+          <div class="mr-section" id="mr-section-country">
+            <h2>Analysis Request by Country</h2>
+            <canvas id="mr-chart-country" height="180"></canvas>
+          </div>
+          <div class="mr-section" id="mr-section-status">
+            <h2>Total Number of Analysis Request (by Status)</h2>
+            <canvas id="mr-chart-status" height="180"></canvas>
+          </div>
+          <div class="mr-section" id="mr-section-application">
+            <h2>Analysis Request by Application</h2>
+            <canvas id="mr-chart-application" height="180"></canvas>
+          </div>
 
-      <div class="card">
-        <h2>Work Plan (Project On Going)</h2>
-        <div id="mr-workplan-area" style="overflow-x:auto;"></div>
-      </div>
+          <div class="mr-section" id="mr-section-workplan">
+            <h2>Work Plan (Project On Going)</h2>
+            <div id="mr-workplan-area" style="overflow-x:auto;"></div>
+          </div>
 
-      <div class="card">
-        <h2>Inventory Update</h2>
-        <div id="mr-inventory-area"></div>
-        <button class="btn" id="mr-add-inventory-btn" style="margin-top:10px;width:100%;">&#10133; Tambah Item</button>
-        <div id="mr-inventory-form" style="display:none;margin-top:10px;"></div>
-      </div>
+          <div class="mr-section" id="mr-section-inventory">
+            <h2>Inventory Update</h2>
+            <div id="mr-inventory-area"></div>
+            <button class="btn" id="mr-add-inventory-btn" style="margin-top:10px;width:100%;">&#10133; Tambah Item</button>
+            <div id="mr-inventory-form" style="display:none;margin-top:10px;"></div>
+          </div>
 
-      <div class="card">
-        <h2>Instrument Update</h2>
-        <div id="mr-instrument-area" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;"></div>
-        <button class="btn" id="mr-add-instrument-btn" style="margin-top:10px;width:100%;">&#10133; Tambah Foto</button>
-        <div id="mr-instrument-form" style="display:none;margin-top:10px;"></div>
+          <div class="mr-section" id="mr-section-instrument">
+            <h2>Instrument Update</h2>
+            <div id="mr-instrument-area" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;"></div>
+            <button class="btn" id="mr-add-instrument-btn" style="margin-top:10px;width:100%;">&#10133; Tambah Foto</button>
+            <div id="mr-instrument-form" style="display:none;margin-top:10px;"></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -2373,12 +2413,38 @@ let cachedMeetingInventory=[];
 let cachedMeetingInstruments=[];
 let meetingChartInstances=[];
 
+let currentMrSection='cover';
+
 function initMeetingReport(){
-  $('mr-period-type').onchange=()=>{ buildMrPeriodPicker(); renderMeetingReport(); };
+  document.querySelectorAll('.mr-menu-item').forEach(btn=>{
+    btn.onclick=()=>switchMrSection(btn.dataset.section);
+  });
+  $('mr-fullscreen-btn').onclick=toggleMrFullscreen;
+  $('mr-period-type').onchange=()=>{ buildMrPeriodPicker(); renderCurrentMrSection(); };
   buildMrPeriodPicker();
   loadMeetingInventory();
   loadMeetingInstruments();
-  renderMeetingReport();
+  switchMrSection('cover');
+}
+
+function switchMrSection(sectionId){
+  currentMrSection=sectionId;
+  document.querySelectorAll('.mr-menu-item').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.section===sectionId);
+  });
+  document.querySelectorAll('.mr-section').forEach(sec=>{
+    sec.classList.toggle('active', sec.id==='mr-section-'+sectionId);
+  });
+  renderCurrentMrSection();
+}
+
+function toggleMrFullscreen(){
+  const el=$('mr-layout');
+  if(!document.fullscreenElement){
+    (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el);
+  } else {
+    (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);
+  }
 }
 
 function buildMrPeriodPicker(){
@@ -2387,25 +2453,26 @@ function buildMrPeriodPicker(){
   const thisYear=new Date().getFullYear();
   const years=[thisYear-1, thisYear, thisYear+1];
   const yearOpts=years.map(y=>'<option value="'+y+'"'+(y===thisYear?' selected':'')+'>'+y+'</option>').join('');
+  const selStyle='font-family:var(--sans);font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--line-s);';
 
   if(type==='monthly'){
     const thisMonth=new Date().getMonth()+1;
-    const monthOpts=Array.from({length:12},(_,i)=>i+1).map(m=>'<option value="'+m+'"'+(m===thisMonth?' selected':'')+'>'+m+'</option>').join('');
+    const monthOpts=Array.from({length:12},(_,i)=>i+1).map(m=>'<option value="'+m+'"'+(m===thisMonth?' selected':'')+'>'+getMonthName(m)+'</option>').join('');
     picker.innerHTML=
-      '<div><label>Tahun</label><select id="mr-year" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+yearOpts+'</select></div>'+
-      '<div><label>Bulan</label><select id="mr-month" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+monthOpts+'</select></div>';
+      '<select id="mr-year" style="'+selStyle+'">'+yearOpts+'</select>'+
+      '<select id="mr-month" style="'+selStyle+'">'+monthOpts+'</select>';
   } else if(type==='semester'){
     const thisHalf=(new Date().getMonth()+1)<=6?'1':'2';
     picker.innerHTML=
-      '<div><label>Tahun</label><select id="mr-year" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+yearOpts+'</select></div>'+
-      '<div><label>Semester</label><select id="mr-half" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+
+      '<select id="mr-year" style="'+selStyle+'">'+yearOpts+'</select>'+
+      '<select id="mr-half" style="'+selStyle+'">'+
       '<option value="1"'+(thisHalf==='1'?' selected':'')+'>H1 (Jan - Jun)</option>'+
-      '<option value="2"'+(thisHalf==='2'?' selected':'')+'>H2 (Jul - Des)</option></select></div>';
+      '<option value="2"'+(thisHalf==='2'?' selected':'')+'>H2 (Jul - Des)</option></select>';
   } else {
-    picker.innerHTML='<div><label>Tahun</label><select id="mr-year" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">'+yearOpts+'</select></div>';
+    picker.innerHTML='<select id="mr-year" style="'+selStyle+'">'+yearOpts+'</select>';
   }
 
-  picker.querySelectorAll('select').forEach(el=>{ el.onchange=renderMeetingReport; });
+  picker.querySelectorAll('select').forEach(el=>{ el.onchange=renderCurrentMrSection; });
 }
 
 function getMrPeriodFilter(){
@@ -2448,35 +2515,40 @@ function sumBy(items, groupKey, valueKey){
   return result;
 }
 
-async function renderMeetingReport(){
+// Render HANYA section yang sedang aktif -- penting untuk Chart.js
+// (canvas yang display:none tidak bisa dihitung ukurannya dengan benar)
+function renderCurrentMrSection(){
   const f=getMrPeriodFilter();
-  $('mr-report-title').textContent='Meeting Report \u2014 '+f.label;
   const projects=getMrFilteredProjects();
-  $('mr-report-subtitle').textContent='Total '+projects.length+' project pada periode ini (lokasi SBL)';
 
-  renderMrCharts(projects);
-  renderMrWorkPlan(projects);
-  renderInventoryTable();
-  renderInstrumentGallery();
-}
-
-function renderMrCharts(projects){
-  meetingChartInstances.forEach(c=>c.destroy());
-  meetingChartInstances=[];
-
-  const byType=sumBy(projects,'type_labwork','qty_analysis');
-  const byCountry=sumBy(projects,'country','qty_analysis');
-  const byStatus=sumBy(projects,'status',null); // COUNT project, bukan sum qty_analysis
-  const byApp=sumBy(projects,'application','qty_analysis');
-
-  drawMrBarChart('mr-chart-typelab', byType, '#14459e');
-  drawMrBarChart('mr-chart-country', byCountry, '#14459e');
-  drawMrBarChart('mr-chart-status', byStatus, '#f19719');
-  drawMrBarChart('mr-chart-application', byApp, '#14459e');
+  if(currentMrSection==='cover'){
+    $('mr-report-title').textContent='Meeting Report \u2014 '+f.label;
+    $('mr-report-subtitle').textContent='Total '+projects.length+' project pada periode ini (lokasi SBL)';
+  } else if(currentMrSection==='typelab'){
+    drawMrBarChart('mr-chart-typelab', sumBy(projects,'type_labwork','qty_analysis'), '#14459e');
+  } else if(currentMrSection==='country'){
+    drawMrBarChart('mr-chart-country', sumBy(projects,'country','qty_analysis'), '#14459e');
+  } else if(currentMrSection==='status'){
+    drawMrBarChart('mr-chart-status', sumBy(projects,'status',null), '#f19719');
+  } else if(currentMrSection==='application'){
+    drawMrBarChart('mr-chart-application', sumBy(projects,'application','qty_analysis'), '#14459e');
+  } else if(currentMrSection==='workplan'){
+    renderMrWorkPlan(projects);
+  } else if(currentMrSection==='inventory'){
+    renderInventoryTable();
+  } else if(currentMrSection==='instrument'){
+    renderInstrumentGallery();
+  }
 }
 
 function drawMrBarChart(canvasId, dataObj, color){
   const canvas=$(canvasId);
+
+  // Hancurkan chart lama yang mungkin masih terpasang di canvas ini
+  // (penting karena sekarang render satu section per klik, bukan sekaligus)
+  const existing=Chart.getChart(canvas);
+  if(existing)existing.destroy();
+
   const labels=Object.keys(dataObj);
   const data=Object.values(dataObj);
   if(!labels.length){
@@ -2693,7 +2765,19 @@ async function downloadMeetingReportAsImage(){
   const btn=$('mr-download-btn');
   btn.disabled=true;
   btn.textContent='Menyiapkan gambar...';
+  const savedSection=currentMrSection;
+
   try{
+    // Render & tampilkan SEMUA section sementara supaya ikut ter-screenshot
+    // (biasanya cuma 1 section yang terlihat karena mode sidebar)
+    const allSections=['cover','typelab','country','status','application','workplan','inventory','instrument'];
+    document.querySelectorAll('.mr-section').forEach(sec=>sec.classList.add('active'));
+    for(const s of allSections){
+      currentMrSection=s;
+      renderCurrentMrSection();
+    }
+    await new Promise(r=>setTimeout(r,300)); // beri waktu chart selesai render
+
     const canvas=await html2canvas($('mr-report-content'), {backgroundColor:'#f7f5f0', scale:2});
     const dataUrl=canvas.toDataURL('image/png');
     const a=document.createElement('a');
@@ -2704,8 +2788,11 @@ async function downloadMeetingReportAsImage(){
   }catch(e){
     toast('Gagal buat gambar: '+e.message);
   }
+
+  // Kembalikan tampilan ke section semula
+  switchMrSection(savedSection);
   btn.disabled=false;
-  btn.textContent='\u{1F4F7} Download sebagai Gambar';
+  btn.textContent='\u{1F4F7} Download Gambar';
 }
 
 async function delRecord(id,instrument){
