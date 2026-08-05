@@ -161,7 +161,9 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sbl-meta-v{display:block;font-size:12px;color:var(--ink);font-weight:600;}
 .sbl-product,.sbl-lims{font-size:11px;color:var(--ink-f);margin-top:4px;}
 
-.wp-card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--raised);margin-bottom:12px;}
+#wp-area{display:grid;grid-template-columns:1fr;gap:12px;}
+.app.wide-mode #wp-area{grid-template-columns:repeat(2,1fr);}
+.wp-card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--raised);margin-bottom:0;}
 .wp-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
 .wp-project-no{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--brand-blue);}
 .wp-info{font-size:12px;color:var(--ink);line-height:1.6;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--line);}
@@ -706,7 +708,7 @@ function initTabs(){
 function switchTab(id){
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===id));
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
-  document.querySelector('.app').classList.toggle('wide-mode', id==='meetingreport');
+  document.querySelector('.app').classList.toggle('wide-mode', id==='meetingreport'||id==='workplanning');
   if(id==='history')renderHistory();
   if(id==='sblproject')renderSblProjects();
   if(id==='workplanning')initWorkPlanning();
@@ -2090,38 +2092,48 @@ function drawBarChart(canvas, labels, data, codes, label, unit){
 // Urutan alur proses status project (dipakai untuk referensi & sorting status)
 const SBL_STATUS_ORDER = ['QUEUE', 'ON GOING', 'COMPLETED', 'CANCEL'];
 
+const SBL_APPLICATION_CODES = [
+  {value:'MBI', label:'MBI \u2014 BIOCIDE'},
+  {value:'BAC', label:'BAC \u2014 BARRIER COATING'},
+  {value:'CRP', label:'CRP \u2014 CREPING & RELEASE'},
+  {value:'DCO', label:'DCO \u2014 DEPOSIT CONTROL'},
+  {value:'FWC', label:'FWC \u2014 FELT CONDITIONING'},
+  {value:'OTH', label:'OTH \u2014 OTHER'},
+  {value:'PCP', label:'PCP \u2014 PITCH CONTROL PULP'},
+  {value:'PER', label:'PER \u2014 PROXIDE PERFORM ENHANCER'},
+  {value:'SSZ', label:'SSZ \u2014 SURFACE SIZING'},
+  {value:'STR', label:'STR \u2014 DRY STRENGTH'},
+  {value:'CTG', label:'CTG \u2014 COATING'},
+  {value:'DFM', label:'DFM \u2014 DEFOAMER'},
+  {value:'WSR', label:'WSR \u2014 WET STRENGTH'},
+  {value:'EZY', label:'EZY \u2014 ENZYME'},
+  {value:'OBA', label:'OBA \u2014 OPTICAL BRIGHTENING AGENT'},
+  {value:'ISZ', label:'ISZ \u2014 INTERNAL SIZING'},
+  {value:'BRE', label:'BRE \u2014 BRIGTHNESS ENHANCER IN DIP'},
+  {value:'CLE', label:'CLE \u2014 CLEANER'},
+  {value:'CLF', label:'CLF \u2014 FABRIC CLEANER'},
+  {value:'DIP', label:'DIP \u2014 DEINKING'},
+  {value:'TCO', label:'TCO \u2014 TISSUE CONVERTING'},
+  {value:'TSO', label:'TSO \u2014 SOFTENER'},
+  {value:'CWT', label:'CWT \u2014 COOLING WATER TREATMENT'},
+  {value:'DAD', label:'DAD \u2014 DIGESTER ADDITIVES'}
+];
+
+// Cari label lengkap "KODE \u2014 Deskripsi" dari sebuah kode Application.
+// Kalau kode tidak ketemu di daftar, kembalikan kode itu apa adanya.
+function getApplicationLabel(code){
+  if(!code)return '-';
+  const found=SBL_APPLICATION_CODES.find(o=>o.value===code);
+  return found?found.label:code;
+}
+
 // Field form "New Project" -- Monthly Report sengaja TIDAK dimasukkan
 // (itu kolom rekap otomatis, bukan input manual per-project)
 const SBL_FORM_FIELDS = [
   {key:'project_no', label:'Project No.', type:'text', required:true, placeholder:'SBL-LT124/BAC-2511', hint:'Format: SBL-[Tipe][NoUrut]/[Aplikasi]-[YYMM], misal SBL-LT124/BAC-2511'},
   {key:'lims_no', label:'LIMS No.', type:'text', placeholder:'LIMS-SBL-2512-0026'},
   {key:'segment', label:'Segment', type:'select', options:['PAPER','PULP','WATER MANAGEMENT','FIBER TECHNOLOGY','SURFACE TECHNOLOGY','OPERATIONAL SUPPORT'], required:true},
-  {key:'application', label:'Application', type:'select', required:true, options:[
-    {value:'MBI', label:'MBI \u2014 BIOCIDE'},
-    {value:'BAC', label:'BAC \u2014 BARRIER COATING'},
-    {value:'CRP', label:'CRP \u2014 CREPING & RELEASE'},
-    {value:'DCO', label:'DCO \u2014 DEPOSIT CONTROL'},
-    {value:'FWC', label:'FWC \u2014 FELT CONDITIONING'},
-    {value:'OTH', label:'OTH \u2014 OTHER'},
-    {value:'PCP', label:'PCP \u2014 PITCH CONTROL PULP'},
-    {value:'PER', label:'PER \u2014 PROXIDE PERFORM ENHANCER'},
-    {value:'SSZ', label:'SSZ \u2014 SURFACE SIZING'},
-    {value:'STR', label:'STR \u2014 DRY STRENGTH'},
-    {value:'CTG', label:'CTG \u2014 COATING'},
-    {value:'DFM', label:'DFM \u2014 DEFOAMER'},
-    {value:'WSR', label:'WSR \u2014 WET STRENGTH'},
-    {value:'EZY', label:'EZY \u2014 ENZYME'},
-    {value:'OBA', label:'OBA \u2014 OPTICAL BRIGHTENING AGENT'},
-    {value:'ISZ', label:'ISZ \u2014 INTERNAL SIZING'},
-    {value:'BRE', label:'BRE \u2014 BRIGTHNESS ENHANCER IN DIP'},
-    {value:'CLE', label:'CLE \u2014 CLEANER'},
-    {value:'CLF', label:'CLF \u2014 FABRIC CLEANER'},
-    {value:'DIP', label:'DIP \u2014 DEINKING'},
-    {value:'TCO', label:'TCO \u2014 TISSUE CONVERTING'},
-    {value:'TSO', label:'TSO \u2014 SOFTENER'},
-    {value:'CWT', label:'CWT \u2014 COOLING WATER TREATMENT'},
-    {value:'DAD', label:'DAD \u2014 DIGESTER ADDITIVES'}
-  ]},
+  {key:'application', label:'Application', type:'select', required:true, options:SBL_APPLICATION_CODES},
   {key:'objective', label:'Objective', type:'textarea', required:true},
   {key:'division', label:'Division', type:'select', options:['TECH&DEV','SALES','QA/QC'], required:true},
   {key:'customer', label:'Customer', type:'text'},
@@ -2580,11 +2592,12 @@ function renderWorkPlanningList(){
     });
   }
 
-  // Urutkan berdasarkan "Estimated" (rencana kapan dikerjakan) dulu --
-  // yang belum ada rencana (kosong) diletakkan di akhir -- lalu nomor
-  // project sebagai urutan kedua.
+  // Urutkan berdasarkan "Estimated Start" (rencana kapan mulai dikerjakan)
+  // dulu -- yang belum ada rencana (kosong) diletakkan di akhir -- lalu
+  // nomor project sebagai urutan kedua. Format tanggal ISO (YYYY-MM-DD)
+  // otomatis terurut kronologis kalau dibandingkan sebagai string.
   items.sort((a,b)=>{
-    const estA=(a.wp.estimated||'').trim(), estB=(b.wp.estimated||'').trim();
+    const estA=(a.wp.estimated_start||'').trim(), estB=(b.wp.estimated_start||'').trim();
     if(!estA && estB)return 1;
     if(estA && !estB)return -1;
     if(estA!==estB)return estA.localeCompare(estB);
@@ -2606,14 +2619,18 @@ function renderWorkPlanningList(){
     html+='</div>';
     html+='<div class="wp-info">';
     html+='<div><b>Objective:</b> '+(p.objective||'-')+'</div>';
-    html+='<div><b>Requestor:</b> '+(p.requestor||'-')+' &middot; <b>Sample Qty:</b> '+(p.sample_qty!=null?p.sample_qty:'-')+' &middot; <b>Application:</b> '+(p.application||'-')+'</div>';
+    html+='<div><b>Requestor:</b> '+(p.requestor||'-')+' &middot; <b>Sample Qty:</b> '+(p.sample_qty!=null?p.sample_qty:'-')+' &middot; <b>Application:</b> '+getApplicationLabel(p.application)+'</div>';
     if(p.sample_product_name)html+='<div><b>Product:</b> '+p.sample_product_name+'</div>';
     html+='</div>';
     html+='<div class="wp-extra-fields">';
-    html+='<div><label>Sample Received</label><input data-key="sample_received" value="'+(wp.sample_received||'')+'"></div>';
+    html+='<div><label>Sample Received</label><input type="date" data-key="sample_received" value="'+(wp.sample_received||'')+'"></div>';
     html+='<div><label>Comparison Product</label><input data-key="comparison_product" value="'+(wp.comparison_product||'')+'"></div>';
-    html+='<div><label>Estimated</label><input data-key="estimated" value="'+(wp.estimated||'')+'"></div>';
-    html+='<div><label>Status Progress</label><input data-key="status_progress" value="'+(wp.status_progress||'')+'"></div>';
+    html+='<div><label>Estimated Start</label><input type="date" data-key="estimated_start" value="'+(wp.estimated_start||'')+'"></div>';
+    html+='<div><label>Estimated Finish</label><input type="date" data-key="estimated_finish" value="'+(wp.estimated_finish||'')+'"></div>';
+    html+='<div><label>Status Progress</label><select data-key="status_progress">'+
+      '<option value="">-- Pilih --</option>'+
+      SBL_STATUS_ORDER.map(s=>'<option value="'+s+'"'+(wp.status_progress===s?' selected':'')+'>'+s+'</option>').join('')+
+      '</select></div>';
     html+='<div><label>PIC</label><select data-key="pic">'+
       '<option value="">-- Pilih --</option>'+
       ['Anti','Alfian','Budi','Dian'].map(n=>'<option value="'+n+'"'+(wp.pic===n?' selected':'')+'>'+n+'</option>').join('')+
