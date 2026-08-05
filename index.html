@@ -159,6 +159,16 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sbl-meta-k{display:block;font-family:var(--mono);font-size:8px;text-transform:uppercase;color:var(--ink-f);}
 .sbl-meta-v{display:block;font-size:12px;color:var(--ink);font-weight:600;}
 .sbl-product,.sbl-lims{font-size:11px;color:var(--ink-f);margin-top:4px;}
+
+.wp-card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--raised);margin-bottom:12px;}
+.wp-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+.wp-project-no{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--brand-blue);}
+.wp-info{font-size:12px;color:var(--ink-s);line-height:1.6;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--line);}
+.wp-info b{color:var(--ink);}
+.wp-extra-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;}
+.wp-extra-fields label{display:block;font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--ink-f);margin-bottom:3px;}
+.wp-extra-fields input,.wp-extra-fields select{width:100%;font-family:var(--sans);font-size:13px;padding:7px 9px;border-radius:6px;border:1px solid var(--line-s);background:var(--paper);color:var(--ink);}
+.wp-save-btn{width:100%;font-size:12px;padding:8px;border-radius:6px;border:none;background:var(--moss);color:#fff;cursor:pointer;font-weight:600;}
 .sbl-card-actions{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);}
 .sbl-card-actions button{flex:1;font-size:12px;padding:8px;}
 .sbl-del-btn{color:var(--rust);border-color:var(--rust-p);}
@@ -352,6 +362,32 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
         <button class="btn" id="sbl-export-btn" style="flex:1;">&#128228; Download Excel (Tahun Ini + Pending Tahun Lalu)</button>
       </div>
       <div id="sbl-project-area" style="margin-top:12px;"></div>
+    </div>
+  </section>
+
+  <section class="panel" data-panel="workplanning">
+    <div class="card">
+      <div class="sync-status" id="wp-sync-status">
+        <span class="sync-dot" id="wp-sync-dot"></span>
+        <span id="wp-sync-text">Memeriksa koneksi...</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn" id="wp-refresh-btn">&#8635; Muat ulang</button>
+      </div>
+      <div class="field-row" style="margin-top:10px;">
+        <div>
+          <label>Filter PIC</label>
+          <select id="wp-pic-filter" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
+            <option value="ALL">Semua PIC</option>
+            <option value="Anti">Anti</option>
+            <option value="Alfian">Alfian</option>
+            <option value="Budi">Budi</option>
+            <option value="Dian">Dian</option>
+            <option value="(kosong)">(Belum ditentukan)</option>
+          </select>
+        </div>
+      </div>
+      <div id="wp-area" style="margin-top:12px;"></div>
     </div>
   </section>
 
@@ -659,7 +695,7 @@ function nextSample(cur){const s='ABCDE';const i=s.indexOf(cur);return i<4?s[i+1
 
 function initTabs(){
   const tabs=$('tabs');
-  [{id:'input',lbl:'Input baru'},{id:'history',lbl:'Riwayat'},{id:'sblproject',lbl:'SBL-Project'},{id:'meetingreport',lbl:'Meeting Report'},{id:'settings',lbl:'Pengaturan'}].forEach((d,i)=>{
+  [{id:'input',lbl:'Input baru'},{id:'history',lbl:'Riwayat'},{id:'sblproject',lbl:'SBL-Project'},{id:'workplanning',lbl:'Work Planning'},{id:'meetingreport',lbl:'Meeting Report'},{id:'settings',lbl:'Pengaturan'}].forEach((d,i)=>{
     const b=document.createElement('button');
     b.textContent=d.lbl;b.className=i===0?'active':'';
     b.onclick=()=>switchTab(d.id);b.dataset.tab=d.id;tabs.appendChild(b);
@@ -671,6 +707,7 @@ function switchTab(id){
   document.querySelector('.app').classList.toggle('wide-mode', id==='meetingreport');
   if(id==='history')renderHistory();
   if(id==='sblproject')renderSblProjects();
+  if(id==='workplanning')initWorkPlanning();
   if(id==='meetingreport')initMeetingReport();
   if(id==='settings'){
     $('supabase-url').value=getSupabaseUrl();
@@ -2467,6 +2504,122 @@ async function exportSblProjects(){
   toast('File berhasil didownload ('+filtered.length+' project)');
 }
 
+// ==== Work Planning ====
+let cachedWorkPlanning=[];
+let cachedWpProjects=[];
+
+async function initWorkPlanning(){
+  $('wp-pic-filter').onchange=renderWorkPlanningList;
+  await loadWorkPlanning();
+}
+
+async function loadWorkPlanning(){
+  const dot=$('wp-sync-dot'), st=$('wp-sync-text');
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey){
+    dot.className='sync-dot';st.textContent='Supabase belum terhubung.';
+    cachedWpProjects=[];cachedWorkPlanning=[];
+    renderWorkPlanningList();
+    return;
+  }
+  st.textContent='Memuat data...';
+  try{
+    const [resProj, resWp]=await Promise.all([
+      fetch(sbUrl+'/rest/v1/sbl_projects?select=*&status=not.in.(COMPLETED,CANCEL)&order=project_no.asc', {headers:supabaseHeaders()}),
+      fetch(sbUrl+'/rest/v1/sbl_work_planning?select=*', {headers:supabaseHeaders()})
+    ]);
+    if(!resProj.ok)throw new Error('HTTP '+resProj.status);
+    let allProjects=await resProj.json();
+    // Hanya lokasi SBL, dan urutkan sesuai nomor project
+    allProjects=allProjects.filter(p=>{
+      const parsed=parseSblProjectNo(p.project_no);
+      return parsed&&parsed.lokasi==='SBL';
+    }).sort(compareSblProjects);
+    cachedWpProjects=allProjects;
+    cachedWorkPlanning=resWp.ok?await resWp.json():[];
+    dot.className='sync-dot ok';
+    st.textContent='Terhubung ('+allProjects.length+' project belum selesai)';
+  }catch(e){
+    dot.className='sync-dot err';st.textContent='Gagal load data.';
+  }
+  renderWorkPlanningList();
+}
+
+function renderWorkPlanningList(){
+  const area=$('wp-area');
+  const picFilter=$('wp-pic-filter').value;
+  const wpByProject={};
+  cachedWorkPlanning.forEach(w=>{ wpByProject[w.project_no]=w; });
+
+  let items=cachedWpProjects.map(p=>({ project:p, wp:wpByProject[p.project_no]||{} }));
+
+  if(picFilter!=='ALL'){
+    items=items.filter(it=>{
+      const pic=it.wp.pic||'(kosong)';
+      return pic===picFilter;
+    });
+  }
+
+  if(!items.length){
+    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Tidak ada project untuk ditampilkan.</p></div>';
+    return;
+  }
+
+  let html='';
+  items.forEach(({project:p, wp})=>{
+    const safeId=cssSafeId(p.project_no);
+    html+='<div class="wp-card" id="wp-card-'+safeId+'">';
+    html+='<div class="wp-card-top">';
+    html+='<span class="wp-project-no">'+p.project_no+'</span>';
+    html+='<span class="sbl-status-badge" style="background:'+sblStatusColor(p.status)+';">'+(p.status||'-')+'</span>';
+    html+='</div>';
+    html+='<div class="wp-info">';
+    html+='<div><b>Objective:</b> '+(p.objective||'-')+'</div>';
+    html+='<div><b>Requestor:</b> '+(p.requestor||'-')+' &middot; <b>Sample Qty:</b> '+(p.sample_qty!=null?p.sample_qty:'-')+' &middot; <b>Application:</b> '+(p.application||'-')+'</div>';
+    if(p.sample_product_name)html+='<div><b>Product:</b> '+p.sample_product_name+'</div>';
+    html+='</div>';
+    html+='<div class="wp-extra-fields">';
+    html+='<div><label>Sample Received</label><input data-key="sample_received" value="'+(wp.sample_received||'')+'"></div>';
+    html+='<div><label>Comparison Product</label><input data-key="comparison_product" value="'+(wp.comparison_product||'')+'"></div>';
+    html+='<div><label>Estimated</label><input data-key="estimated" value="'+(wp.estimated||'')+'"></div>';
+    html+='<div><label>Status Progress</label><input data-key="status_progress" value="'+(wp.status_progress||'')+'"></div>';
+    html+='<div><label>PIC</label><select data-key="pic">'+
+      '<option value="">-- Pilih --</option>'+
+      ['Anti','Alfian','Budi','Dian'].map(n=>'<option value="'+n+'"'+(wp.pic===n?' selected':'')+'>'+n+'</option>').join('')+
+      '</select></div>';
+    html+='</div>';
+    html+='<button class="wp-save-btn" onclick="saveWorkPlanningItem(&quot;'+p.project_no.replace(/"/g,'&quot;')+'&quot;)">&#10003; Simpan</button>';
+    html+='</div>';
+  });
+  area.innerHTML=html;
+}
+
+async function saveWorkPlanningItem(projectNo){
+  const safeId=cssSafeId(projectNo);
+  const card=document.getElementById('wp-card-'+safeId);
+  const inputs=card.querySelectorAll('[data-key]');
+  const data={project_no:projectNo, updated_at:new Date().toISOString()};
+  inputs.forEach(inp=>{
+    const v=inp.value.trim();
+    data[inp.dataset.key]=v||null;
+  });
+
+  const idx=cachedWorkPlanning.findIndex(w=>w.project_no===projectNo);
+  if(idx>=0)cachedWorkPlanning[idx]=data;
+  else cachedWorkPlanning.push(data);
+  toast('Tersimpan \u2713');
+
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey){toast('Supabase belum terhubung');return;}
+  try{
+    await fetch(sbUrl+'/rest/v1/sbl_work_planning?on_conflict=project_no', {
+      method:'POST',
+      headers: supabaseHeaders({'Prefer':'resolution=merge-duplicates,return=minimal'}),
+      body: JSON.stringify(data)
+    });
+  }catch(e){ toast('Gagal sync ke database'); }
+}
+
 // ==== Meeting Report ====
 let cachedMeetingInventory=[];
 let cachedMeetingInstruments=[];
@@ -3212,6 +3365,7 @@ $('sbl-new-btn').onclick=()=>{
 };
 $('sbl-year-select').onchange=()=>renderSblProjectList();
 $('sbl-export-btn').onclick=exportSblProjects;
+$('wp-refresh-btn').onclick=loadWorkPlanning;
 $('mr-download-btn').onclick=downloadMeetingReportAsImage;
 $('mr-add-inventory-btn').onclick=showAddInventoryForm;
 $('mr-add-instrument-btn').onclick=showAddInstrumentForm;
