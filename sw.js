@@ -1,80 +1,37 @@
-const CACHE_NAME = 'pnshar-lab-v4';
-const ASSETS_TO_CACHE = [
+// sw.js - Service Worker untuk PWA
+const CACHE_NAME = 'apc-lab-v1';
+const urlsToCache = [
+  './',
   './index.html',
-  './manifest.json',
   './icon-192.png',
   './icon-512.png'
 ];
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
   );
-  self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      )
-    )
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => response || fetch(event.request))
   );
-  self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  const isOwnAsset = url.origin === self.location.origin;
-
-  if (event.request.method !== 'GET' || !isOwnAsset) {
-    return;
-  }
-
-  const isHTML = event.request.mode === 'navigate' ||
-                 event.request.destination === 'document' ||
-                 url.pathname.endsWith('.html') ||
-                 url.pathname.endsWith('/');
-
-  if (isHTML) {
-    event.respondWith((async () => {
-      try {
-        const networkResponse = await fetch(event.request);
-        const responseForCache = networkResponse.clone();
-        caches.open(CACHE_NAME)
-          .then((cache) => cache.put(event.request, responseForCache))
-          .catch(() => {});
-        return networkResponse;
-      } catch (err) {
-        const cached = await caches.match(event.request);
-        if (cached) return cached;
-        throw err;
-      }
-    })());
-    return;
-  }
-
-  event.respondWith((async () => {
-    const cached = await caches.match(event.request);
-    if (cached) {
-      fetch(event.request).then((networkResponse) => {
-        const responseForCache = networkResponse.clone();
-        caches.open(CACHE_NAME)
-          .then((cache) => cache.put(event.request, responseForCache))
-          .catch(() => {});
-      }).catch(() => {});
-      return cached;
-    }
-    try {
-      const networkResponse = await fetch(event.request);
-      const responseForCache = networkResponse.clone();
-      caches.open(CACHE_NAME)
-        .then((cache) => cache.put(event.request, responseForCache))
-        .catch(() => {});
-      return networkResponse;
-    } catch (err) {
-      throw err;
-    }
-  })());
+self.addEventListener('activate', event => {
+  const cacheWhitelist = [CACHE_NAME];
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (!cacheWhitelist.includes(cacheName)) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
 });
