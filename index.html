@@ -161,17 +161,15 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sbl-meta-v{display:block;font-size:12px;color:var(--ink);font-weight:600;}
 .sbl-product,.sbl-lims{font-size:11px;color:var(--ink-f);margin-top:4px;}
 
-#wp-area{display:grid;grid-template-columns:1fr;gap:12px;}
-.app.wide-mode #wp-area{grid-template-columns:repeat(2,1fr);}
-.wp-card{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--raised);margin-bottom:0;}
-.wp-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
-.wp-project-no{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--brand-blue);}
-.wp-info{font-size:12px;color:var(--ink);line-height:1.6;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--line);}
-.wp-info b{color:var(--ink);}
-.wp-extra-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;}
-.wp-extra-fields label{display:block;font-family:var(--mono);font-size:9px;text-transform:uppercase;color:var(--ink);margin-bottom:3px;font-weight:700;}
-.wp-extra-fields input,.wp-extra-fields select{width:100%;font-family:var(--sans);font-size:13px;padding:7px 9px;border-radius:6px;border:1px solid var(--line-s);background:var(--paper);color:var(--ink);}
-.wp-save-btn{width:100%;font-size:12px;padding:8px;border-radius:6px;border:none;background:var(--moss);color:#fff;cursor:pointer;font-weight:600;}
+#wp-area{width:100%;}
+.wp-project-no{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--brand-blue);white-space:nowrap;}
+.wp-table{width:100%;border-collapse:collapse;font-size:12px;color:var(--ink);}
+.wp-table thead th{background:var(--brand-blue);color:#fff;padding:8px 10px;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:1;}
+.wp-table td{padding:6px 8px;border-bottom:1px solid rgba(0,0,0,.08);vertical-align:middle;color:var(--ink);}
+.wp-td-objective{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wp-table input,.wp-table select{width:100%;min-width:110px;font-family:var(--sans);font-size:12px;padding:5px 6px;border-radius:5px;border:1px solid var(--line-s);background:rgba(255,255,255,.7);color:var(--ink);}
+.wp-save-btn-row{font-size:14px;padding:6px 10px;border-radius:6px;border:none;background:var(--moss);color:#fff;cursor:pointer;font-weight:700;}
+.wp-save-btn-row:hover{opacity:.85;}
 .sbl-card-actions{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);}
 .sbl-card-actions button{flex:1;font-size:12px;padding:8px;}
 .sbl-del-btn{color:var(--rust);border-color:var(--rust-p);}
@@ -230,7 +228,8 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       <div class="field-row">
         <div>
           <label>No. Project</label>
-          <input type="text" id="field-project" maxlength="10" placeholder="contoh: LT024" style="text-transform:uppercase;font-weight:700;">
+          <input type="text" id="field-project" list="project-suggestions" maxlength="30" placeholder="pilih atau ketik No. Project" style="text-transform:uppercase;font-weight:700;">
+          <datalist id="project-suggestions"></datalist>
         </div>
       </div>
       <div class="field-row">
@@ -709,6 +708,7 @@ function switchTab(id){
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===id));
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
   document.querySelector('.app').classList.toggle('wide-mode', id==='meetingreport'||id==='workplanning');
+  if(id==='input')loadOnGoingProjectSuggestions();
   if(id==='history')renderHistory();
   if(id==='sblproject')renderSblProjects();
   if(id==='workplanning')initWorkPlanning();
@@ -2087,6 +2087,21 @@ function drawBarChart(canvas, labels, data, codes, label, unit){
   });
 }
 
+// Isi datalist "No. Project" di form Input baru dengan project yang
+// statusnya ON GOING saja di SBL-Project (QUEUE belum mulai testing,
+// COMPLETED/CANCEL sudah selesai -- keduanya tidak perlu muncul di sini)
+async function loadOnGoingProjectSuggestions(){
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  const datalist=$('project-suggestions');
+  if(!sbUrl||!sbKey){datalist.innerHTML='';return;}
+  try{
+    const res=await fetch(sbUrl+'/rest/v1/sbl_projects?select=project_no&status=eq.'+encodeURIComponent('ON GOING')+'&order=project_no.asc', {headers:supabaseHeaders()});
+    if(!res.ok)return;
+    const rows=await res.json();
+    datalist.innerHTML=rows.map(r=>'<option value="'+r.project_no+'"></option>').join('');
+  }catch(e){ /* diamkan kalau gagal, field tetap bisa diisi manual */ }
+}
+
 // ==== SBL-Project (master data project, terpisah dari data hasil uji) ====
 
 // Urutan alur proses status project (dipakai untuk referensi & sorting status)
@@ -2577,6 +2592,19 @@ async function loadWorkPlanning(){
   renderWorkPlanningList();
 }
 
+// Palet warna pastel untuk highlight baris -- dipilih deterministik dari
+// project_no (hash sederhana), jadi project yang sama SELALU dapat warna
+// yang sama setiap kali dibuka, tidak berubah-ubah acak.
+const WP_ROW_PALETTE=['#e8f0fb','#fef3e2','#e8f5ea','#fbe8ee','#f0ebf8','#e2f5f5','#fbeee2','#eef5e2','#f5e2f0','#e2ebf5'];
+function getProjectRowColor(projectNo){
+  let hash=0;
+  const s=String(projectNo);
+  for(let i=0;i<s.length;i++){
+    hash=(hash*31+s.charCodeAt(i))|0;
+  }
+  return WP_ROW_PALETTE[Math.abs(hash)%WP_ROW_PALETTE.length];
+}
+
 function renderWorkPlanningList(){
   const area=$('wp-area');
   const picFilter=$('wp-pic-filter').value;
@@ -2609,42 +2637,41 @@ function renderWorkPlanningList(){
     return;
   }
 
-  let html='';
+  let html='<div style="overflow-x:auto;"><table class="wp-table">';
+  html+='<thead><tr>'+
+    ['Project No.','Status','Objective','Requestor','Application','Sample Qty','Sample Received','Comparison Product','Est. Start','Est. Finish','Status Progress','PIC',''].map(h=>'<th>'+h+'</th>').join('')+
+    '</tr></thead><tbody>';
+
   items.forEach(({project:p, wp})=>{
     const safeId=cssSafeId(p.project_no);
-    html+='<div class="wp-card" id="wp-card-'+safeId+'">';
-    html+='<div class="wp-card-top">';
-    html+='<span class="wp-project-no">'+p.project_no+'</span>';
-    html+='<span class="sbl-status-badge" style="background:'+sblStatusColor(p.status)+';">'+(p.status||'-')+'</span>';
-    html+='</div>';
-    html+='<div class="wp-info">';
-    html+='<div><b>Objective:</b> '+(p.objective||'-')+'</div>';
-    html+='<div><b>Requestor:</b> '+(p.requestor||'-')+' &middot; <b>Sample Qty:</b> '+(p.sample_qty!=null?p.sample_qty:'-')+' &middot; <b>Application:</b> '+getApplicationLabel(p.application)+'</div>';
-    if(p.sample_product_name)html+='<div><b>Product:</b> '+p.sample_product_name+'</div>';
-    html+='</div>';
-    html+='<div class="wp-extra-fields">';
-    html+='<div><label>Sample Received</label><input type="date" data-key="sample_received" value="'+(wp.sample_received||'')+'"></div>';
-    html+='<div><label>Comparison Product</label><input data-key="comparison_product" value="'+(wp.comparison_product||'')+'"></div>';
-    html+='<div><label>Estimated Start</label><input type="date" data-key="estimated_start" value="'+(wp.estimated_start||'')+'"></div>';
-    html+='<div><label>Estimated Finish</label><input type="date" data-key="estimated_finish" value="'+(wp.estimated_finish||'')+'"></div>';
-    html+='<div><label>Status Progress</label><select data-key="status_progress">'+
-      '<option value="">-- Pilih --</option>'+
+    const rowColor=getProjectRowColor(p.project_no);
+    html+='<tr id="wp-row-'+safeId+'" style="background:'+rowColor+';">';
+    html+='<td><span class="wp-project-no">'+p.project_no+'</span></td>';
+    html+='<td><span class="sbl-status-badge" style="background:'+sblStatusColor(p.status)+';">'+(p.status||'-')+'</span></td>';
+    html+='<td class="wp-td-objective" title="'+(p.objective||'').replace(/"/g,'&quot;')+'">'+(p.objective||'-')+'</td>';
+    html+='<td>'+(p.requestor||'-')+'</td>';
+    html+='<td>'+getApplicationLabel(p.application)+'</td>';
+    html+='<td style="text-align:center;">'+(p.sample_qty!=null?p.sample_qty:'-')+'</td>';
+    html+='<td><input type="date" data-key="sample_received" value="'+(wp.sample_received||'')+'"></td>';
+    html+='<td><input data-key="comparison_product" value="'+(wp.comparison_product||'')+'"></td>';
+    html+='<td><input type="date" data-key="estimated_start" value="'+(wp.estimated_start||'')+'"></td>';
+    html+='<td><input type="date" data-key="estimated_finish" value="'+(wp.estimated_finish||'')+'"></td>';
+    html+='<td><select data-key="status_progress"><option value="">--</option>'+
       SBL_STATUS_ORDER.map(s=>'<option value="'+s+'"'+(wp.status_progress===s?' selected':'')+'>'+s+'</option>').join('')+
-      '</select></div>';
-    html+='<div><label>PIC</label><select data-key="pic">'+
-      '<option value="">-- Pilih --</option>'+
+      '</select></td>';
+    html+='<td><select data-key="pic"><option value="">--</option>'+
       ['Anti','Alfian','Budi','Dian'].map(n=>'<option value="'+n+'"'+(wp.pic===n?' selected':'')+'>'+n+'</option>').join('')+
-      '</select></div>';
-    html+='</div>';
-    html+='<button class="wp-save-btn" onclick="saveWorkPlanningItem(&quot;'+p.project_no.replace(/"/g,'&quot;')+'&quot;)">&#10003; Simpan</button>';
-    html+='</div>';
+      '</select></td>';
+    html+='<td><button class="wp-save-btn-row" onclick="saveWorkPlanningItem(&quot;'+p.project_no.replace(/"/g,'&quot;')+'&quot;)">&#10003;</button></td>';
+    html+='</tr>';
   });
+  html+='</tbody></table></div>';
   area.innerHTML=html;
 }
 
 async function saveWorkPlanningItem(projectNo){
   const safeId=cssSafeId(projectNo);
-  const card=document.getElementById('wp-card-'+safeId);
+  const card=document.getElementById('wp-row-'+safeId);
   const inputs=card.querySelectorAll('[data-key]');
   const data={project_no:projectNo, updated_at:new Date().toISOString()};
   inputs.forEach(inp=>{
@@ -3432,7 +3459,7 @@ $('show-supabase-btn').onclick=()=>{
 };
 $('to-settings').onclick=()=>switchTab('settings');
 
-initTabs();initInstrument();initUpload();
+initTabs();initInstrument();initUpload();loadOnGoingProjectSuggestions();
 $('read-btn').onclick=readReceipt;
 $('save-btn').onclick=saveRecord;
 $('save-manual-btn').onclick=saveManualRecord;
