@@ -354,6 +354,12 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       </div>
       <div class="field-row" style="margin-bottom:10px;">
         <div>
+          <label>Cari No. Project</label>
+          <input type="text" id="sbl-search-input" placeholder="ketik No. Project, misal LT124 atau BAC" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
+        </div>
+      </div>
+      <div class="field-row" style="margin-bottom:10px;">
+        <div>
           <label>Pilih Tahun</label>
           <select id="sbl-year-select" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
             <option value="ALL">Semua tahun</option>
@@ -2324,10 +2330,22 @@ function renderSblProjectList(){
     return !parsed || parsed.lokasi==='SBL';
   });
 
+  // Filter pencarian -- cocokkan ke No. Project, Application, Objective,
+  // atau Requestor, supaya mudah cari tanpa perlu scroll panjang
+  const searchTerm=($('sbl-search-input').value||'').trim().toUpperCase();
+  if(searchTerm){
+    filtered=filtered.filter(p=>{
+      return (p.project_no||'').toUpperCase().includes(searchTerm)
+        || (p.application||'').toUpperCase().includes(searchTerm)
+        || (p.objective||'').toUpperCase().includes(searchTerm)
+        || (p.requestor||'').toUpperCase().includes(searchTerm);
+    });
+  }
+
   filtered=filtered.slice().sort(compareSblProjects);
 
   if(!filtered.length){
-    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data project.</p></div>';
+    area.innerHTML='<div class="empty-state"><div class="icon">&#128203;</div><p>Belum ada data project'+(searchTerm?' yang cocok dengan pencarian.':'.')+'</p></div>';
     return;
   }
 
@@ -2595,7 +2613,7 @@ async function loadWorkPlanning(){
 // Palet warna pastel untuk highlight baris -- dipilih deterministik dari
 // project_no (hash sederhana), jadi project yang sama SELALU dapat warna
 // yang sama setiap kali dibuka, tidak berubah-ubah acak.
-const WP_ROW_PALETTE=['#e8f0fb','#fef3e2','#e8f5ea','#fbe8ee','#f0ebf8','#e2f5f5','#fbeee2','#eef5e2','#f5e2f0','#e2ebf5'];
+const WP_ROW_PALETTE=['#e8f0fb','#fef3e2'];
 function getProjectRowColor(projectNo){
   let hash=0;
   const s=String(projectNo);
@@ -2637,7 +2655,7 @@ function renderWorkPlanningList(){
     return;
   }
 
-  let html='<div style="overflow-x:auto;"><table class="wp-table">';
+  let html='<div style="overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--line);border-radius:8px;"><table class="wp-table">';
   html+='<thead><tr>'+
     ['Project No.','Status','Objective','Requestor','Application','Sample Qty','Sample Received','Comparison Product','Est. Start','Est. Finish','Status Progress','PIC',''].map(h=>'<th>'+h+'</th>').join('')+
     '</tr></thead><tbody>';
@@ -3475,6 +3493,7 @@ $('sbl-new-btn').onclick=()=>{
   }
 };
 $('sbl-year-select').onchange=()=>renderSblProjectList();
+$('sbl-search-input').oninput=()=>renderSblProjectList();
 $('sbl-export-btn').onclick=exportSblProjects;
 $('wp-refresh-btn').onclick=loadWorkPlanning;
 $('wp-pdf-btn').onclick=downloadWorkPlanningAsPDF;
