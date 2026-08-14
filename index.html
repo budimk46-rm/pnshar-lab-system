@@ -517,6 +517,14 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       </div>
       <p class="help" id="settings-msg" style="margin-top:8px"></p>
     </div>
+    <div class="card">
+      <h2>Backup Settings</h2>
+      <p class="help">Simpan semua API key & koneksi database sebagai 1 kode teks -- taruh di Notes HP atau tempat aman lainnya. Kalau suatu saat Settings ini hilang (misal browser di-reset), tinggal paste kode ini untuk isi ulang dengan cepat, tidak perlu cari-cari lagi satu-satu.</p>
+      <button class="btn-primary" id="copy-settings-btn" style="margin-top:10px;width:100%;">&#128203; Copy Settings ke Clipboard</button>
+      <textarea id="paste-settings-input" placeholder="Paste kode backup di sini untuk isi ulang..." rows="2" style="margin-top:10px;font-family:var(--mono);font-size:12px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);background:var(--raised);color:var(--ink);width:100%;resize:vertical;"></textarea>
+      <button class="btn" id="paste-settings-btn" style="margin-top:8px;width:100%;">&#128229; Paste &amp; Isi Ulang Settings</button>
+      <p class="help" id="backup-settings-msg" style="margin-top:8px;"></p>
+    </div>
   </section>
 </div>
 <div class="toast" id="toast"></div>
@@ -3512,6 +3520,51 @@ $('show-supabase-btn').onclick=()=>{
   if(inp.type==='password'){inp.type='text';$('show-supabase-btn').textContent='Sembunyikan';}
   else{inp.type='password';$('show-supabase-btn').textContent='Tampilkan';}
 };
+
+$('copy-settings-btn').onclick=async ()=>{
+  const backup={
+    supabaseUrl: getSupabaseUrl(),
+    supabaseKey: getSupabaseKey(),
+    visionKey: getVisionKey(),
+    anthropicKey: getAnthropicKey()
+  };
+  const encoded='APCLAB1:'+btoa(unescape(encodeURIComponent(JSON.stringify(backup))));
+  try{
+    await navigator.clipboard.writeText(encoded);
+    $('backup-settings-msg').textContent='Tersalin ke clipboard! Simpan di Notes HP atau tempat aman lainnya.';
+    toast('Settings copied \u2713');
+  }catch(e){
+    // Fallback kalau clipboard API tidak tersedia: tampilkan di textarea paste supaya bisa di-copy manual
+    $('paste-settings-input').value=encoded;
+    $('backup-settings-msg').textContent='Tidak bisa akses clipboard otomatis -- silakan copy manual dari kotak teks di bawah.';
+  }
+};
+
+$('paste-settings-btn').onclick=()=>{
+  const raw=$('paste-settings-input').value.trim();
+  if(!raw){$('backup-settings-msg').textContent='Paste kode backup dulu di kotak di atas.';return;}
+  if(!raw.startsWith('APCLAB1:')){$('backup-settings-msg').textContent='Kode tidak dikenali -- pastikan copy lengkap dari tombol Copy Settings.';return;}
+  try{
+    const decoded=JSON.parse(decodeURIComponent(escape(atob(raw.slice(8)))));
+    if(decoded.supabaseUrl)setSupabaseUrl(decoded.supabaseUrl);
+    if(decoded.supabaseKey)setSupabaseKey(decoded.supabaseKey);
+    if(decoded.visionKey)setVisionKey(decoded.visionKey);
+    if(decoded.anthropicKey)setAnthropicKey(decoded.anthropicKey);
+
+    // Refresh tampilan field-field lain di tab Settings supaya langsung ke-update
+    $('supabase-url').value=getSupabaseUrl();
+    $('supabase-key').value=getSupabaseKey();
+    $('vision-key-input').value=getVisionKey();
+    $('anthropic-key-input').value=getAnthropicKey();
+
+    $('backup-settings-msg').textContent='Settings berhasil dipulihkan \u2713';
+    $('paste-settings-input').value='';
+    toast('Settings restored \u2713');
+  }catch(e){
+    $('backup-settings-msg').textContent='Gagal baca kode backup -- pastikan kode disalin lengkap dan tidak rusak.';
+  }
+};
+
 $('to-settings').onclick=()=>switchTab('settings');
 
 initTabs();initInstrument();initUpload();loadOnGoingProjectSuggestions();
