@@ -162,6 +162,9 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sbl-product,.sbl-lims{font-size:11px;color:var(--ink-f);margin-top:4px;}
 
 #wp-area{width:100%;}
+.wp-header-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.wp-header-bar .sync-status{flex-shrink:0;}
+.wp-header-bar .btn{white-space:nowrap;}
 .wp-project-no{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--brand-blue);word-break:break-all;}
 .wp-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;color:var(--ink);}
 .wp-table thead th{background:var(--brand-blue);color:#fff;padding:8px 6px;text-align:left;position:sticky;top:0;z-index:1;line-height:1.3;}
@@ -377,29 +380,24 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
   </section>
 
   <section class="panel" data-panel="workplanning">
-    <div class="card">
-      <div class="sync-status" id="wp-sync-status">
-        <span class="sync-dot" id="wp-sync-dot"></span>
-        <span id="wp-sync-text">Memeriksa koneksi...</span>
-      </div>
-      <div class="toolbar">
-        <button class="btn" id="wp-refresh-btn">&#8635; Muat ulang</button>
-        <button class="btn" id="wp-pdf-btn" style="flex:1;">&#128196; Download PDF</button>
-      </div>
-      <div class="field-row" style="margin-top:10px;">
-        <div>
-          <label>Filter PIC</label>
-          <select id="wp-pic-filter" style="font-family:var(--sans);font-size:14px;padding:9px 11px;border-radius:8px;border:1px solid var(--line-s);width:100%;">
-            <option value="ALL">Semua PIC</option>
-            <option value="Anti">Anti</option>
-            <option value="Alfian">Alfian</option>
-            <option value="Budi">Budi</option>
-            <option value="Dian">Dian</option>
-            <option value="(kosong)">(Belum ditentukan)</option>
-          </select>
+    <div class="card" style="padding-bottom:10px;">
+      <div class="wp-header-bar">
+        <div class="sync-status" id="wp-sync-status" style="margin:0;">
+          <span class="sync-dot" id="wp-sync-dot"></span>
+          <span id="wp-sync-text">Checking connection...</span>
         </div>
+        <button class="btn" id="wp-refresh-btn">&#8635; Refresh</button>
+        <button class="btn" id="wp-pdf-btn">&#128196; Download PDF</button>
+        <select id="wp-pic-filter" style="font-family:var(--sans);font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--line-s);">
+          <option value="ALL">All PIC</option>
+          <option value="Anti">Anti</option>
+          <option value="Alfian">Alfian</option>
+          <option value="Budi">Budi</option>
+          <option value="Dian">Dian</option>
+          <option value="(kosong)">(Not set)</option>
+        </select>
       </div>
-      <div id="wp-area" style="margin-top:12px;"></div>
+      <div id="wp-area" style="margin-top:10px;"></div>
     </div>
   </section>
 
@@ -2585,12 +2583,12 @@ async function loadWorkPlanning(){
   const dot=$('wp-sync-dot'), st=$('wp-sync-text');
   const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
   if(!sbUrl||!sbKey){
-    dot.className='sync-dot';st.textContent='Supabase belum terhubung.';
+    dot.className='sync-dot';st.textContent='Supabase not connected.';
     cachedWpProjects=[];cachedWorkPlanning=[];
     renderWorkPlanningList();
     return;
   }
-  st.textContent='Memuat data...';
+  st.textContent='Loading data...';
   try{
     const [resProj, resWp]=await Promise.all([
       fetch(sbUrl+'/rest/v1/sbl_projects?select=*&status=not.in.(COMPLETED,CANCEL)&order=project_no.asc', {headers:supabaseHeaders()}),
@@ -2606,9 +2604,9 @@ async function loadWorkPlanning(){
     cachedWpProjects=allProjects;
     cachedWorkPlanning=resWp.ok?await resWp.json():[];
     dot.className='sync-dot ok';
-    st.textContent='Terhubung ('+allProjects.length+' project belum selesai)';
+    st.textContent='Connected ('+allProjects.length+' project'+(allProjects.length!==1?'s':'')+' not yet completed)';
   }catch(e){
-    dot.className='sync-dot err';st.textContent='Gagal load data.';
+    dot.className='sync-dot err';st.textContent='Failed to load data.';
   }
   renderWorkPlanningList();
 }
@@ -2658,12 +2656,12 @@ function renderWorkPlanningList(){
     return;
   }
 
-  let html='<div style="overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 320px);border:1px solid var(--line);border-radius:8px;"><table class="wp-table">';
+  let html='<div style="overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 280px);border:1px solid var(--line);border-radius:8px;"><table class="wp-table">';
   html+='<colgroup>'+
-    ['11%','9%','7%','18%','8%','5%','7%','8%','6%','6%','8%','4%','3%'].map(w=>'<col style="width:'+w+';">').join('')+
+    ['9%','7%','9%','20%','6%','9%','6%','7%','4%','5%','5%','6%','4%','3%'].map(w=>'<col style="width:'+w+';">').join('')+
     '</colgroup>';
   html+='<thead><tr>'+
-    ['Project No.','LIMS No.','Status','Objective','Requestor','Sample<br>Qty','Sample Received','Comparison Product','Est. Start','Est. Finish','Application','PIC'].map(h=>'<th>'+h+'</th>').join('')+
+    ['Project No.','LIMS No.','Status','Objective','Requestor','Sample Product Name','Sample Received','Comparison Product','Sample<br>Qty','Est. Start','Est. Finish','Application','PIC'].map(h=>'<th>'+h+'</th>').join('')+
     '<th></th></tr></thead><tbody>';
 
   items.forEach(({project:p, wp}, idx)=>{
@@ -2680,9 +2678,10 @@ function renderWorkPlanningList(){
       '</select></td>';
     html+='<td class="wp-td-wrap">'+(p.objective||'-')+'</td>';
     html+='<td class="wp-td-wrap">'+(p.requestor||'-')+'</td>';
-    html+='<td style="text-align:center;">'+(p.sample_qty!=null?p.sample_qty:'-')+'</td>';
+    html+='<td class="wp-td-wrap">'+(p.sample_product_name||'-')+'</td>';
     html+='<td><input type="date" data-key="sample_received" value="'+(wp.sample_received||'')+'"></td>';
     html+='<td><input data-key="comparison_product" value="'+(wp.comparison_product||'')+'"></td>';
+    html+='<td style="text-align:center;">'+(p.sample_qty!=null?p.sample_qty:'-')+'</td>';
     html+='<td><input type="date" data-key="estimated_start" value="'+(wp.estimated_start||'')+'"></td>';
     html+='<td><input type="date" data-key="estimated_finish" value="'+(wp.estimated_finish||'')+'"></td>';
     html+='<td class="wp-td-wrap">'+getApplicationLabel(p.application)+'</td>';
