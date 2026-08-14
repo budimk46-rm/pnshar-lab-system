@@ -162,11 +162,11 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 .sbl-product,.sbl-lims{font-size:11px;color:var(--ink-f);margin-top:4px;}
 
 #wp-area{width:100%;}
-.wp-project-no{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--brand-blue);white-space:nowrap;}
+.wp-project-no{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--brand-blue);word-break:break-all;}
 .wp-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;color:var(--ink);}
 .wp-table thead th{background:var(--brand-blue);color:#fff;padding:8px 6px;text-align:left;position:sticky;top:0;z-index:1;line-height:1.3;}
 .wp-table td{padding:5px 6px;border-bottom:1px solid rgba(0,0,0,.08);vertical-align:middle;color:#1a2420;font-weight:500;}
-.wp-td-truncate{max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wp-td-wrap{white-space:normal;word-wrap:break-word;overflow-wrap:break-word;line-height:1.4;}
 .wp-table input,.wp-table select{width:100%;min-width:0;font-family:var(--sans);font-size:11px;padding:5px 4px;border-radius:5px;border:1px solid var(--line-s);background:rgba(255,255,255,.75);color:#1a2420;transition:border-color .15s ease,box-shadow .15s ease,background .15s ease;}
 .wp-table input:hover,.wp-table select:hover{border-color:var(--brand-blue);}
 .wp-table input:focus,.wp-table select:focus{outline:none;border-color:var(--brand-blue);box-shadow:0 0 0 3px rgba(20,69,158,.15);background:#fff;}
@@ -2660,29 +2660,32 @@ function renderWorkPlanningList(){
 
   let html='<div style="overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 320px);border:1px solid var(--line);border-radius:8px;"><table class="wp-table">';
   html+='<colgroup>'+
-    ['10%','9%','8%','14%','8%','9%','5%','7%','9%','6%','6%','6%','3%'].map(w=>'<col style="width:'+w+';">').join('')+
+    ['11%','9%','7%','18%','8%','5%','7%','8%','6%','6%','8%','4%','3%'].map(w=>'<col style="width:'+w+';">').join('')+
     '</colgroup>';
   html+='<thead><tr>'+
-    ['Project No.','LIMS No.','Status','Objective','Requestor','Application','Sample<br>Qty','Sample Received','Comparison Product','Est. Start','Est. Finish','PIC',''].map(h=>'<th>'+h+'</th>').join('')+
-    '</tr></thead><tbody>';
+    ['Project No.','LIMS No.','Status','Objective','Requestor','Sample<br>Qty','Sample Received','Comparison Product','Est. Start','Est. Finish','Application','PIC'].map(h=>'<th>'+h+'</th>').join('')+
+    '<th></th></tr></thead><tbody>';
 
-  items.forEach(({project:p, wp})=>{
+  items.forEach(({project:p, wp}, idx)=>{
     const safeId=cssSafeId(p.project_no);
-    const rowColor=getProjectRowColor(p.project_no);
+    // Warna baris berdasarkan URUTAN (selang-seling tegas), bukan hash --
+    // supaya visual konsisten rapi (project yang sama akan tetap dapat
+    // warna yang sama juga SELAMA urutan/filter tabel tidak berubah).
+    const rowColor=WP_ROW_PALETTE[idx%WP_ROW_PALETTE.length];
     html+='<tr id="wp-row-'+safeId+'" style="background:'+rowColor+';">';
-    html+='<td><span class="wp-project-no">'+p.project_no+'</span></td>';
-    html+='<td class="wp-td-truncate" title="'+(p.lims_no||'').replace(/"/g,'&quot;')+'">'+(p.lims_no||'-')+'</td>';
+    html+='<td class="wp-td-wrap"><span class="wp-project-no">'+p.project_no+'</span></td>';
+    html+='<td class="wp-td-wrap">'+(p.lims_no||'-')+'</td>';
     html+='<td><select onchange="updateProjectStatusFromWP(&quot;'+p.project_no.replace(/"/g,'&quot;')+'&quot;,this.value)" style="background:'+sblStatusColor(p.status)+';color:#fff;font-weight:700;border:none;">'+
       SBL_STATUS_ORDER.map(s=>'<option value="'+s+'"'+(p.status===s?' selected':'')+'>'+s+'</option>').join('')+
       '</select></td>';
-    html+='<td class="wp-td-truncate" title="'+(p.objective||'').replace(/"/g,'&quot;')+'">'+(p.objective||'-')+'</td>';
-    html+='<td class="wp-td-truncate">'+(p.requestor||'-')+'</td>';
-    html+='<td class="wp-td-truncate">'+getApplicationLabel(p.application)+'</td>';
+    html+='<td class="wp-td-wrap">'+(p.objective||'-')+'</td>';
+    html+='<td class="wp-td-wrap">'+(p.requestor||'-')+'</td>';
     html+='<td style="text-align:center;">'+(p.sample_qty!=null?p.sample_qty:'-')+'</td>';
     html+='<td><input type="date" data-key="sample_received" value="'+(wp.sample_received||'')+'"></td>';
     html+='<td><input data-key="comparison_product" value="'+(wp.comparison_product||'')+'"></td>';
     html+='<td><input type="date" data-key="estimated_start" value="'+(wp.estimated_start||'')+'"></td>';
     html+='<td><input type="date" data-key="estimated_finish" value="'+(wp.estimated_finish||'')+'"></td>';
+    html+='<td class="wp-td-wrap">'+getApplicationLabel(p.application)+'</td>';
     html+='<td><select data-key="pic"><option value="">--</option>'+
       ['Anti','Alfian','Budi','Dian'].map(n=>'<option value="'+n+'"'+(wp.pic===n?' selected':'')+'>'+n+'</option>').join('')+
       '</select></td>';
