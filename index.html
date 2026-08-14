@@ -163,11 +163,14 @@ button.btn:hover{background:var(--moss-p);border-color:var(--moss);}
 
 #wp-area{width:100%;}
 .wp-project-no{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--brand-blue);white-space:nowrap;}
-.wp-table{width:100%;border-collapse:collapse;font-size:12px;color:var(--ink);}
-.wp-table thead th{background:var(--brand-blue);color:#fff;padding:8px 10px;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:1;}
-.wp-table td{padding:6px 8px;border-bottom:1px solid rgba(0,0,0,.08);vertical-align:middle;color:var(--ink);}
-.wp-td-objective{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.wp-table input,.wp-table select{width:100%;min-width:110px;font-family:var(--sans);font-size:12px;padding:5px 6px;border-radius:5px;border:1px solid var(--line-s);background:rgba(255,255,255,.7);color:var(--ink);}
+.wp-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;color:var(--ink);}
+.wp-table thead th{background:var(--brand-blue);color:#fff;padding:8px 6px;text-align:left;position:sticky;top:0;z-index:1;line-height:1.3;}
+.wp-table td{padding:5px 6px;border-bottom:1px solid rgba(0,0,0,.08);vertical-align:middle;color:#1a2420;font-weight:500;}
+.wp-td-truncate{max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wp-table input,.wp-table select{width:100%;min-width:0;font-family:var(--sans);font-size:11px;padding:5px 4px;border-radius:5px;border:1px solid var(--line-s);background:rgba(255,255,255,.75);color:#1a2420;transition:border-color .15s ease,box-shadow .15s ease,background .15s ease;}
+.wp-table input:hover,.wp-table select:hover{border-color:var(--brand-blue);}
+.wp-table input:focus,.wp-table select:focus{outline:none;border-color:var(--brand-blue);box-shadow:0 0 0 3px rgba(20,69,158,.15);background:#fff;}
+.wp-table select{cursor:pointer;}
 .wp-save-btn-row{font-size:14px;padding:6px 10px;border-radius:6px;border:none;background:var(--moss);color:#fff;cursor:pointer;font-weight:700;}
 .wp-save-btn-row:hover{opacity:.85;}
 .sbl-card-actions{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);}
@@ -317,7 +320,7 @@ input[type=url]{font-family:var(--sans);font-size:14px;padding:9px 11px;border-r
       <div class="sync-status" id="sync-status">
         <span class="sync-dot" id="sync-dot"></span>
         <span id="sync-text">Memeriksa koneksi...</span>
-        <a id="to-settings">Pengaturan</a>
+        <a id="to-settings">Settings</a>
       </div>
       <div class="toolbar">
         <button class="btn" id="refresh-btn">&#8635; Muat ulang</button>
@@ -704,7 +707,7 @@ function nextSample(cur){const s='ABCDE';const i=s.indexOf(cur);return i<4?s[i+1
 
 function initTabs(){
   const tabs=$('tabs');
-  [{id:'input',lbl:'Input baru'},{id:'history',lbl:'Riwayat'},{id:'sblproject',lbl:'SBL-Project'},{id:'workplanning',lbl:'Work Planning'},{id:'meetingreport',lbl:'Meeting Report'},{id:'settings',lbl:'Pengaturan'}].forEach((d,i)=>{
+  [{id:'input',lbl:'New Entry'},{id:'history',lbl:'History'},{id:'sblproject',lbl:'SBL-Project'},{id:'workplanning',lbl:'Work Planning'},{id:'meetingreport',lbl:'Meeting Report'},{id:'settings',lbl:'Settings'}].forEach((d,i)=>{
     const b=document.createElement('button');
     b.textContent=d.lbl;b.className=i===0?'active':'';
     b.onclick=()=>switchTab(d.id);b.dataset.tab=d.id;tabs.appendChild(b);
@@ -1009,7 +1012,7 @@ async function readReceiptMultiSample(inst){
   eb.classList.remove('show');rb.disabled=true;
 
   if(!getVisionKey() && !getAnthropicKey()){
-    eb.textContent='API Key belum diisi. Buka tab Pengaturan dan masukkan Gemini atau Anthropic API key.';
+    eb.textContent='API Key belum diisi. Buka tab Settings dan masukkan Gemini atau Anthropic API key.';
     eb.classList.add('show');
     sl.classList.remove('show');pb.style.display='none';rb.disabled=false;
     return;
@@ -1063,9 +1066,9 @@ async function readReceiptMultiSample(inst){
   }catch(err){
     let msg=err.message;
     if(msg==='__NO_API_KEY__'){
-      msg='API Key belum diisi. Buka tab Pengaturan.';
+      msg='API Key belum diisi. Buka tab Settings.';
     } else if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')||msg.includes('authentication_error')){
-      msg='API Key tidak valid. Cek kembali key di tab Pengaturan.';
+      msg='API Key tidak valid. Cek kembali key di tab Settings.';
     } else if(msg.includes('Failed to fetch')||msg.includes('NetworkError')){
       msg='Tidak ada koneksi internet. Pastikan terhubung ke WiFi/data.';
     } else {
@@ -1086,7 +1089,7 @@ async function readReceiptAvgReadings(inst){
   eb.classList.remove('show');rb.disabled=true;
 
   if(!getVisionKey() && !getAnthropicKey()){
-    eb.textContent='API Key belum diisi. Buka tab Pengaturan dan masukkan Gemini atau Anthropic API key.';
+    eb.textContent='API Key belum diisi. Buka tab Settings dan masukkan Gemini atau Anthropic API key.';
     eb.classList.add('show');
     sl.classList.remove('show');pb.style.display='none';rb.disabled=false;
     return;
@@ -1132,9 +1135,9 @@ async function readReceiptAvgReadings(inst){
   }catch(err){
     let msg=err.message;
     if(msg==='__NO_API_KEY__'){
-      msg='API Key belum diisi. Buka tab Pengaturan.';
+      msg='API Key belum diisi. Buka tab Settings.';
     } else if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')||msg.includes('authentication_error')){
-      msg='API Key tidak valid. Cek kembali key di tab Pengaturan.';
+      msg='API Key tidak valid. Cek kembali key di tab Settings.';
     } else if(msg.includes('Failed to fetch')||msg.includes('NetworkError')){
       msg='Tidak ada koneksi internet. Pastikan terhubung ke WiFi/data.';
     } else {
@@ -1166,7 +1169,7 @@ async function readReceipt(){
   eb.classList.remove('show');rb.disabled=true;
 
   if(!getVisionKey() && !getAnthropicKey()){
-    eb.textContent='API Key belum diisi. Buka tab Pengaturan dan masukkan Gemini atau Anthropic API key.';
+    eb.textContent='API Key belum diisi. Buka tab Settings dan masukkan Gemini atau Anthropic API key.';
     eb.classList.add('show');
     sl.classList.remove('show');pb.style.display='none';rb.disabled=false;
     return;
@@ -1236,9 +1239,9 @@ async function readReceipt(){
     let msg=err.message;
     // Tampilkan pesan asli dari API supaya lebih mudah didiagnosis
     if(msg==='__NO_API_KEY__'){
-      msg='API Key belum diisi. Buka tab Pengaturan.';
+      msg='API Key belum diisi. Buka tab Settings.';
     } else if(msg.includes('API_KEY_INVALID')||msg.includes('API key not valid')||msg.includes('authentication_error')){
-      msg='API Key tidak valid. Cek kembali key di tab Pengaturan.';
+      msg='API Key tidak valid. Cek kembali key di tab Settings.';
     } else if(msg.includes('Failed to fetch')||msg.includes('NetworkError')){
       msg='Tidak ada koneksi internet. Pastikan terhubung ke WiFi/data.';
     } else {
@@ -2655,9 +2658,12 @@ function renderWorkPlanningList(){
     return;
   }
 
-  let html='<div style="overflow:auto;max-height:calc(100vh - 320px);border:1px solid var(--line);border-radius:8px;"><table class="wp-table">';
+  let html='<div style="overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 320px);border:1px solid var(--line);border-radius:8px;"><table class="wp-table">';
+  html+='<colgroup>'+
+    ['10%','9%','8%','14%','8%','9%','5%','7%','9%','6%','6%','6%','3%'].map(w=>'<col style="width:'+w+';">').join('')+
+    '</colgroup>';
   html+='<thead><tr>'+
-    ['Project No.','Status','Objective','Requestor','Application','Sample Qty','Sample Received','Comparison Product','Est. Start','Est. Finish','Status Progress','PIC',''].map(h=>'<th>'+h+'</th>').join('')+
+    ['Project No.','LIMS No.','Status','Objective','Requestor','Application','Sample<br>Qty','Sample Received','Comparison Product','Est. Start','Est. Finish','PIC',''].map(h=>'<th>'+h+'</th>').join('')+
     '</tr></thead><tbody>';
 
   items.forEach(({project:p, wp})=>{
@@ -2665,18 +2671,18 @@ function renderWorkPlanningList(){
     const rowColor=getProjectRowColor(p.project_no);
     html+='<tr id="wp-row-'+safeId+'" style="background:'+rowColor+';">';
     html+='<td><span class="wp-project-no">'+p.project_no+'</span></td>';
-    html+='<td><span class="sbl-status-badge" style="background:'+sblStatusColor(p.status)+';">'+(p.status||'-')+'</span></td>';
-    html+='<td class="wp-td-objective" title="'+(p.objective||'').replace(/"/g,'&quot;')+'">'+(p.objective||'-')+'</td>';
-    html+='<td>'+(p.requestor||'-')+'</td>';
-    html+='<td>'+getApplicationLabel(p.application)+'</td>';
+    html+='<td class="wp-td-truncate" title="'+(p.lims_no||'').replace(/"/g,'&quot;')+'">'+(p.lims_no||'-')+'</td>';
+    html+='<td><select onchange="updateProjectStatusFromWP(&quot;'+p.project_no.replace(/"/g,'&quot;')+'&quot;,this.value)" style="background:'+sblStatusColor(p.status)+';color:#fff;font-weight:700;border:none;">'+
+      SBL_STATUS_ORDER.map(s=>'<option value="'+s+'"'+(p.status===s?' selected':'')+'>'+s+'</option>').join('')+
+      '</select></td>';
+    html+='<td class="wp-td-truncate" title="'+(p.objective||'').replace(/"/g,'&quot;')+'">'+(p.objective||'-')+'</td>';
+    html+='<td class="wp-td-truncate">'+(p.requestor||'-')+'</td>';
+    html+='<td class="wp-td-truncate">'+getApplicationLabel(p.application)+'</td>';
     html+='<td style="text-align:center;">'+(p.sample_qty!=null?p.sample_qty:'-')+'</td>';
     html+='<td><input type="date" data-key="sample_received" value="'+(wp.sample_received||'')+'"></td>';
     html+='<td><input data-key="comparison_product" value="'+(wp.comparison_product||'')+'"></td>';
     html+='<td><input type="date" data-key="estimated_start" value="'+(wp.estimated_start||'')+'"></td>';
     html+='<td><input type="date" data-key="estimated_finish" value="'+(wp.estimated_finish||'')+'"></td>';
-    html+='<td><select data-key="status_progress"><option value="">--</option>'+
-      SBL_STATUS_ORDER.map(s=>'<option value="'+s+'"'+(wp.status_progress===s?' selected':'')+'>'+s+'</option>').join('')+
-      '</select></td>';
     html+='<td><select data-key="pic"><option value="">--</option>'+
       ['Anti','Alfian','Budi','Dian'].map(n=>'<option value="'+n+'"'+(wp.pic===n?' selected':'')+'>'+n+'</option>').join('')+
       '</select></td>';
@@ -2685,6 +2691,37 @@ function renderWorkPlanningList(){
   });
   html+='</tbody></table></div>';
   area.innerHTML=html;
+}
+
+async function updateProjectStatusFromWP(projectNo, newStatus){
+  const sbUrl=getSupabaseUrl(), sbKey=getSupabaseKey();
+  if(!sbUrl||!sbKey){toast('Supabase belum terhubung');return;}
+
+  const data={status:newStatus, updated_at:new Date().toISOString()};
+
+  // Kalau diubah jadi Completed, tarik Comparison Product (sama seperti
+  // logic auto-pull di form Edit SBL-Project)
+  if(newStatus.toUpperCase()==='COMPLETED'){
+    const wp=cachedWorkPlanning.find(w=>w.project_no===projectNo);
+    if(wp && wp.comparison_product){
+      const proj=cachedWpProjects.find(p=>p.project_no===projectNo);
+      const existingName=proj?proj.sample_product_name:null;
+      data.sample_product_name=existingName?existingName+'; '+wp.comparison_product:wp.comparison_product;
+    }
+  }
+
+  try{
+    const res=await fetch(sbUrl+'/rest/v1/sbl_projects?project_no=eq.'+encodeURIComponent(projectNo), {
+      method:'PATCH',
+      headers: supabaseHeaders({'Prefer':'return=minimal'}),
+      body: JSON.stringify(data)
+    });
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    toast('Status updated \u2713');
+    await loadWorkPlanning(); // reload -- project yg jadi Completed/Cancel otomatis hilang dari list
+  }catch(e){
+    toast('Gagal update status: '+e.message);
+  }
 }
 
 async function saveWorkPlanningItem(projectNo){
@@ -3468,7 +3505,7 @@ $('save-url-btn').onclick=()=>{
   setSupabaseUrl(u);
   setSupabaseKey(k);
   $('settings-msg').textContent=(u&&k)?'Tersimpan. Buka tab Riwayat untuk cek koneksi.':'Koneksi belum lengkap (URL & key harus diisi keduanya).';
-  toast('Pengaturan disimpan');
+  toast('Settings saved');
 };
 $('show-supabase-btn').onclick=()=>{
   const inp=$('supabase-key');
